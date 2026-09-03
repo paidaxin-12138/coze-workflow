@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理后台 · Parfum Studio</title>
+    <script>if(sessionStorage.getItem('pt'))document.documentElement.classList.add('pt')</script>
+    <link rel="icon" type="image/png" href="/images/perfume-logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link rel="stylesheet" href="/tailwind.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="parfum-studio">
+
+    <!-- ============ Navbar ============ -->
+    <header class="fixed top-0 left-0 right-0 z-50 transition-all duration-500" id="navbar" style="background: rgba(250, 248, 244, 0.95); backdrop-filter: blur(12px); box-shadow: 0 1px 0 0 rgba(42, 37, 32, 0.06);">
+        <nav class="max-w-7xl mx-auto px-6 md:px-10">
+            <div class="flex items-center justify-between h-20">
+                <a href="index.html" class="font-serif text-2xl tracking-wide text-ink hover:text-forest-700 transition-colors duration-300">
+                    Parfum<span class="italic font-light"> · Studio</span>
+                </a>
+                <div class="hidden md:flex items-center gap-10">
+                    <a href="studio.html" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">工坊</a>
+                    <a href="index.html#scent-families" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">香调</a>
+                    <a href="tasks.html" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">任务</a>
+                    <a href="history.html" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">收藏</a>
+                    <a href="about.html" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">关于</a>
+                    <div class="w-px h-5 bg-ink/15"></div>
+                    <a href="account.html" class="text-sm tracking-widest uppercase text-forest-700 transition-colors duration-300">账户</a>
+                </div>
+                <a href="account.html" class="md:hidden w-8 h-8 rounded-full bg-forest-700 flex items-center justify-center" aria-label="账号管理">
+                    <span class="material-symbols-outlined text-sand-50 text-[18px]">person</span>
+                </a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- ============ 管理后台 ============ -->
+    <main class="min-h-screen pt-20 pb-24 bg-sand-50">
+        <div class="max-w-7xl mx-auto px-6 md:px-10 py-12">
+
+            <!-- 页面标题 -->
+            <div class="mb-12 flex items-center justify-between flex-wrap gap-4">
+                <div>
+                    <p class="section-label mb-4">控制台</p>
+                    <h2 class="heading-serif text-4xl md:text-5xl mb-2 flex items-center gap-3">
+                        <span class="material-symbols-outlined text-[32px] text-forest-700">admin_panel_settings</span>
+                        管理 <span class="italic">后台</span>
+                    </h2>
+                    <p class="text-ink-muted">管理用户账户、权限和系统数据</p>
+                </div>
+                <div id="adminBadge" class="hidden px-4 py-2 bg-forest-100 border border-forest-400 text-forest-700 text-xs tracking-widest uppercase">
+                    <span class="material-symbols-outlined text-[16px] align-middle mr-1">verified_user</span>管理员
+                </div>
+            </div>
+
+            <!-- 未登录 / 无权限 -->
+            <div id="accessDenied" class="hidden bg-clay-50 border border-clay-300 p-12 text-center max-w-md mx-auto">
+                <span class="material-symbols-outlined text-[64px] text-clay-600/60 block mb-4">block</span>
+                <h3 class="heading-serif text-2xl text-ink mb-2">访问受限</h3>
+                <p id="accessDeniedMsg" class="text-ink-muted mb-8">需要管理员权限才能访问此页面</p>
+                <a href="login.html" class="btn-primary">前往登录</a>
+            </div>
+
+            <!-- 管理面板 -->
+            <div id="adminPanel" class="hidden">
+
+                <!-- 统计卡片 -->
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-12">
+                    <div class="bg-sand-100 border border-sand-200 p-6">
+                        <div class="section-label mb-2">总用户</div>
+                        <div id="statTotal" class="heading-serif text-3xl text-forest-700">-</div>
+                    </div>
+                    <div class="bg-sand-100 border border-sand-200 p-6">
+                        <div class="section-label mb-2">管理员</div>
+                        <div id="statAdmins" class="heading-serif text-3xl text-forest-700">-</div>
+                    </div>
+                    <div class="bg-sand-100 border border-sand-200 p-6">
+                        <div class="section-label mb-2">已禁用</div>
+                        <div id="statDisabled" class="heading-serif text-3xl text-clay-700">-</div>
+                    </div>
+                    <div class="bg-sand-100 border border-sand-200 p-6">
+                        <div class="section-label mb-2">今日新增</div>
+                        <div id="statToday" class="heading-serif text-3xl text-forest-700">-</div>
+                    </div>
+                    <div class="bg-sand-100 border border-sand-200 p-6">
+                        <div class="section-label mb-2">历史记录</div>
+                        <div id="statHistory" class="heading-serif text-3xl text-forest-700">-</div>
+                    </div>
+                    <div class="bg-forest-100 border border-forest-400 p-6">
+                        <div class="section-label mb-2">总生成次数</div>
+                        <div id="statTotalGen" class="heading-serif text-3xl text-forest-700">-</div>
+                    </div>
+                    <div class="bg-forest-100 border border-forest-300 p-6">
+                        <div class="section-label mb-2">今日生成</div>
+                        <div id="statTodayGen" class="heading-serif text-3xl text-forest-700">-</div>
+                    </div>
+                </div>
+
+                <!-- 用户列表 -->
+                <div class="bg-sand-100 border border-sand-200 overflow-hidden">
+                    <div class="px-8 py-6 border-b border-sand-200 flex items-center justify-between flex-wrap gap-4">
+                        <h3 class="heading-serif text-xl text-ink flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[20px] text-forest-700">group</span> 用户管理
+                        </h3>
+                        <div class="flex items-center gap-3">
+                            <input id="searchUser" type="text" placeholder="搜索设计师 ID / 邮箱..." class="bg-sand-50 border border-sand-200 focus:border-forest-500 px-4 py-2 text-ink text-sm outline-none transition-colors w-64">
+                            <button id="refreshBtn" class="inline-flex items-center gap-2 px-4 py-2 border border-sand-300 text-ink-light hover:bg-sand-200 hover:text-forest-700 transition-all text-sm">
+                                <span class="material-symbols-outlined text-[18px]">refresh</span>刷新
+                            </button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead>
+                                <tr class="bg-sand-50/50 text-xs tracking-widest uppercase text-ink-muted">
+                                    <th class="px-6 py-4 text-left">ID</th>
+                                    <th class="px-6 py-4 text-left">设计师 ID</th>
+                                    <th class="px-6 py-4 text-left">显示名</th>
+                                    <th class="px-6 py-4 text-left">邮箱</th>
+                                    <th class="px-6 py-4 text-right">生成次数</th>
+                                    <th class="px-6 py-4 text-left">最后生成</th>
+                                    <th class="px-6 py-4 text-left">角色</th>
+                                    <th class="px-6 py-4 text-left">状态</th>
+                                    <th class="px-6 py-4 text-left">注册时间</th>
+                                    <th class="px-6 py-4 text-right">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody id="userTableBody">
+                                <tr><td colspan="10" class="text-center py-8 text-ink-muted">加载中...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ============ Footer ============ -->
+    <footer class="bg-forest-900 text-sand-100 py-16">
+        <div class="max-w-7xl mx-auto px-6 md:px-10">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+                <div>
+                    <h3 class="font-serif text-2xl mb-4 text-sand-50">
+                        Parfum<span class="italic font-light"> · Studio</span>
+                    </h3>
+                    <p class="text-sm text-sand-200/70 leading-relaxed">一个 AI 驱动的嗅觉工坊。从语言、记忆与想象中构思香氛概念。</p>
+                </div>
+                <div>
+                    <p class="text-xs tracking-widest uppercase text-sand-200/50 mb-4">探索</p>
+                    <ul class="space-y-2">
+                        <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">工坊</a></li>
+                        <li><a href="index.html#scent-families" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">香调</a></li>
+                        <li><a href="tasks.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
+                        <li><a href="history.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">收藏</a></li>
+                        <li><a href="about.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">关于</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <p class="text-xs tracking-widest uppercase text-sand-200/50 mb-4">工坊</p>
+                    <p class="text-sm text-sand-200/70 leading-relaxed whitespace-pre-line">于数字工坊中构思。
+由 Coze 工作流驱动。</p>
+                </div>
+            </div>
+            <div class="pt-8 border-t border-sand-200/15 flex flex-col md:flex-row justify-between items-center gap-4">
+                <p class="text-xs text-sand-200/50 tracking-wide">© 2026 Parfum Studio. 所有香氛皆为想象。</p>
+                <p class="text-xs text-sand-200/50 tracking-wide italic font-serif">"气味从来不只是气味。"</p>
+            </div>
+        </div>
+    </footer>
+
+    <!-- 重置密码模态框 -->
+    <div id="resetPwModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-ink/40 backdrop-blur-sm">
+        <div class="bg-sand-100 border border-sand-200 p-8 max-w-md w-full mx-4">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="heading-serif text-xl text-ink">重置密码</h3>
+                <button id="closeModal" class="text-ink-muted hover:text-forest-700 transition-colors">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <p id="resetPwHint" class="text-ink-muted text-sm mb-4"></p>
+            <input id="resetPwInput" type="text" minlength="6" class="w-full bg-sand-50 border border-sand-200 focus:border-forest-500 px-4 py-3 text-ink outline-none transition-colors mb-4" placeholder="输入新密码（至少 6 位）">
+            <div class="flex items-center justify-end gap-3">
+                <button id="cancelReset" class="px-4 py-2 border border-sand-300 text-ink-light hover:bg-sand-200 transition-all text-sm">取消</button>
+                <button id="confirmReset" class="btn-primary">确认重置</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    (function() {
+        const SESSION_KEY = 'pcs_user_session';
+        const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
+
+        function getToken() {
+            try {
+                const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+                return s && s.token ? s.token : null;
+            } catch (_) { return null; }
+        }
+
+        function getCurrentUser() {
+            try {
+                const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+                return s && s.user ? s.user : null;
+            } catch (_) { return null; }
+        }
+
+        const token = getToken();
+        const adminPanel = document.getElementById('adminPanel');
+        const accessDenied = document.getElementById('accessDenied');
+        const adminBadge = document.getElementById('adminBadge');
+        let allUsers = [];
+        let resetTargetId = null;
+
+        // 权限校验
+        if (!token) {
+            accessDenied.classList.remove('hidden');
+            document.getElementById('accessDeniedMsg').textContent = '请先登录管理员账户';
+        } else {
+            // 验证后端权限
+            fetch(`${API_BASE}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } })
+                .then(r => {
+                    if (r.status === 403) {
+                        accessDenied.classList.remove('hidden');
+                        document.getElementById('accessDeniedMsg').textContent = '您的账户不是管理员，无权访问';
+                        return null;
+                    }
+                    if (r.status === 401) {
+                        accessDenied.classList.remove('hidden');
+                        document.getElementById('accessDeniedMsg').textContent = '登录已过期，请重新登录';
+                        return null;
+                    }
+                    if (!r.ok) throw new Error('验证失败');
+                    return r.json();
+                })
+                .then(data => {
+                    if (!data) return;
+                    adminPanel.classList.remove('hidden');
+                    adminBadge.classList.remove('hidden');
+                    const u = getCurrentUser();
+                    if (u && u.designer_id) {
+                        adminBadge.innerHTML = `<span class="material-symbols-outlined text-[16px] align-middle mr-1">verified_user</span>${u.designer_id} (管理员)`;
+                    }
+                    renderStats(data);
+                    loadUsers();
+                })
+                .catch(err => {
+                    console.error(err);
+                    accessDenied.classList.remove('hidden');
+                    document.getElementById('accessDeniedMsg').textContent = '服务器连接失败: ' + err.message;
+                });
+        }
+
+        function renderStats(stats) {
+            document.getElementById('statTotal').textContent = stats.totalUsers;
+            document.getElementById('statAdmins').textContent = stats.adminCount;
+            document.getElementById('statDisabled').textContent = stats.disabledCount;
+            document.getElementById('statToday').textContent = stats.newToday;
+            document.getElementById('statHistory').textContent = stats.totalHistory;
+            document.getElementById('statTotalGen').textContent = stats.totalGenerations ?? '-';
+            document.getElementById('statTodayGen').textContent = stats.todayGenerations ?? '-';
+        }
+
+        async function loadUsers() {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/users`, { headers: { Authorization: `Bearer ${token}` } });
+                const data = await res.json();
+                if (data.users) {
+                    allUsers = data.users;
+                    renderUsers();
+                }
+            } catch (err) {
+                console.error('加载用户失败:', err);
+            }
+        }
+
+        function renderUsers() {
+            const tbody = document.getElementById('userTableBody');
+            const q = document.getElementById('searchUser').value.trim().toLowerCase();
+            const filtered = q
+                ? allUsers.filter(u =>
+                    (u.designer_id || '').toLowerCase().includes(q) ||
+                    (u.email || '').toLowerCase().includes(q) ||
+                    (u.display_name || '').toLowerCase().includes(q)
+                )
+                : allUsers;
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="10" class="text-center py-8 text-ink-muted">暂无用户</td></tr>';
+                return;
+            }
+
+            const currentUser = getCurrentUser();
+
+            tbody.innerHTML = filtered.map(u => {
+                const isSelf = currentUser && u.designer_id === currentUser.designer_id;
+                const isAdmin = u.is_admin === 1;
+                const isDisabled = u.is_disabled === 1;
+                const date = u.created_at ? new Date(u.created_at).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }) : '-';
+                const genCount = (typeof u.gen_count === 'number') ? u.gen_count : 0;
+                const lastGen = u.last_gen_at
+                    ? new Date(u.last_gen_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : '-';
+                return `
+                <tr class="border-t border-sand-200 hover:bg-sand-50 transition-colors">
+                    <td class="px-6 py-4 text-ink-muted text-sm">${u.id}</td>
+                    <td class="px-6 py-4">
+                        <div class="flex items-center gap-2">
+                            <span class="text-ink font-medium">${u.designer_id}</span>
+                            ${isSelf ? '<span class="text-[10px] px-2 py-0.5 bg-forest-100 text-forest-700 rounded-full">YOU</span>' : ''}
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 text-ink-light">${u.display_name || '-'}</td>
+                    <td class="px-6 py-4 text-ink-light text-sm">${u.email || '-'}</td>
+                    <td class="px-6 py-4 text-right">
+                        <span class="inline-block px-3 py-1 bg-forest-100 border border-forest-300 text-forest-700 text-sm font-semibold rounded-full">${genCount}</span>
+                    </td>
+                    <td class="px-6 py-4 text-ink-muted text-sm whitespace-nowrap">${lastGen}</td>
+                    <td class="px-6 py-4">
+                        ${isAdmin
+                            ? '<span class="px-2 py-1 bg-forest-100 border border-forest-300 text-forest-700 text-xs rounded-full">管理员</span>'
+                            : '<span class="px-2 py-1 border border-sand-300 text-ink-light text-xs rounded-full">用户</span>'
+                        }
+                    </td>
+                    <td class="px-6 py-4">
+                        ${isDisabled
+                            ? '<span class="px-2 py-1 bg-clay-100 border border-clay-300 text-clay-700 text-xs rounded-full">已禁用</span>'
+                            : '<span class="px-2 py-1 bg-forest-50 border border-forest-200 text-forest-700 text-xs rounded-full">正常</span>'
+                        }
+                    </td>
+                    <td class="px-6 py-4 text-ink-muted text-sm">${date}</td>
+                    <td class="px-6 py-4 text-right">
+                        <div class="flex items-center justify-end gap-1">
+                            <button data-id="${u.id}" data-action="reset-pw" ${isSelf ? 'disabled' : ''} class="action-btn px-2 py-1 text-ink-light hover:text-forest-700 hover:bg-forest-100 rounded transition-all ${isSelf ? 'opacity-30 cursor-not-allowed' : ''}" title="重置密码">
+                                <span class="material-symbols-outlined text-[18px]">key</span>
+                            </button>
+                            <button data-id="${u.id}" data-action="toggle-admin" ${isSelf ? 'disabled' : ''} class="action-btn px-2 py-1 text-ink-light hover:text-forest-700 hover:bg-forest-100 rounded transition-all ${isSelf ? 'opacity-30 cursor-not-allowed' : ''}" title="${isAdmin ? '撤销管理员' : '设为管理员'}">
+                                <span class="material-symbols-outlined text-[18px]">${isAdmin ? 'remove_moderator' : 'add_moderator'}</span>
+                            </button>
+                            <button data-id="${u.id}" data-action="toggle-disabled" ${isSelf ? 'disabled' : ''} class="action-btn px-2 py-1 ${isDisabled ? 'text-forest-700' : 'text-ink-light'} hover:bg-forest-100 rounded transition-all ${isSelf ? 'opacity-30 cursor-not-allowed' : ''}" title="${isDisabled ? '启用' : '禁用'}">
+                                <span class="material-symbols-outlined text-[18px]">${isDisabled ? 'lock_open' : 'lock'}</span>
+                            </button>
+                            <button data-id="${u.id}" data-action="delete" ${isSelf ? 'disabled' : ''} class="action-btn px-2 py-1 text-ink-light hover:text-clay-700 hover:bg-clay-100 rounded transition-all ${isSelf ? 'opacity-30 cursor-not-allowed' : ''}" title="删除">
+                                <span class="material-symbols-outlined text-[18px]">delete</span>
+                            </button>
+                        </div>
+                    </td>
+                </tr>`;
+            }).join('');
+
+            // 绑定操作按钮
+            tbody.querySelectorAll('.action-btn').forEach(btn => {
+                if (btn.disabled) return;
+                btn.addEventListener('click', () => handleAction(parseInt(btn.dataset.id, 10), btn.dataset.action));
+            });
+        }
+
+        async function handleAction(userId, action) {
+            const target = allUsers.find(u => u.id === userId);
+            if (!target) return;
+
+            if (action === 'delete') {
+                if (!confirm(`确认删除用户 "${target.designer_id}"？\n\n该用户的历史记录和会话将被一并删除，此操作不可撤销。`)) return;
+                try {
+                    const res = await fetch(`${API_BASE}/api/admin/users/${userId}`, {
+                        method: 'DELETE',
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        alert(data.message || '已删除');
+                        await loadUsers();
+                        await refreshStats();
+                    } else {
+                        alert(data.message || data.error || '删除失败');
+                    }
+                } catch (err) {
+                    alert('网络错误');
+                }
+            } else if (action === 'toggle-admin') {
+                if (!confirm(`${target.is_admin ? '撤销' : '授予'} "${target.designer_id}" 的管理员权限？`)) return;
+                try {
+                    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/toggle-admin`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        await loadUsers();
+                        await refreshStats();
+                    } else {
+                        alert(data.message || data.error || '操作失败');
+                    }
+                } catch (err) {
+                    alert('网络错误');
+                }
+            } else if (action === 'toggle-disabled') {
+                if (!confirm(`${target.is_disabled ? '启用' : '禁用'}账户 "${target.designer_id}"？${target.is_disabled ? '' : '\n\n禁用后该用户将无法登录，所有活跃会话立即失效。'}`)) return;
+                try {
+                    const res = await fetch(`${API_BASE}/api/admin/users/${userId}/toggle-disabled`, {
+                        method: 'POST',
+                        headers: { Authorization: `Bearer ${token}` }
+                    });
+                    const data = await res.json();
+                    if (res.ok) {
+                        await loadUsers();
+                        await refreshStats();
+                    } else {
+                        alert(data.message || data.error || '操作失败');
+                    }
+                } catch (err) {
+                    alert('网络错误');
+                }
+            } else if (action === 'reset-pw') {
+                resetTargetId = userId;
+                document.getElementById('resetPwHint').textContent = `为用户 "${target.designer_id}" 设置新密码（用户需用新密码重新登录）：`;
+                document.getElementById('resetPwInput').value = '';
+                document.getElementById('resetPwModal').classList.remove('hidden');
+                document.getElementById('resetPwModal').classList.add('flex');
+                document.getElementById('resetPwInput').focus();
+            }
+        }
+
+        async function refreshStats() {
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/stats`, { headers: { Authorization: `Bearer ${token}` } });
+                const data = await res.json();
+                if (data) renderStats(data);
+            } catch (_) {}
+        }
+
+        // 搜索
+        document.getElementById('searchUser').addEventListener('input', renderUsers);
+
+        // 刷新
+        document.getElementById('refreshBtn').addEventListener('click', () => {
+            loadUsers();
+            refreshStats();
+        });
+
+        // 重置密码模态框
+        const modal = document.getElementById('resetPwModal');
+        document.getElementById('closeModal').addEventListener('click', closeModal);
+        document.getElementById('cancelReset').addEventListener('click', closeModal);
+        document.getElementById('confirmReset').addEventListener('click', async () => {
+            const newPw = document.getElementById('resetPwInput').value;
+            if (!newPw || newPw.length < 6) {
+                alert('新密码至少 6 位');
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/admin/users/${resetTargetId}/reset-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ new_password: newPw })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    alert(data.message || '密码已重置');
+                    closeModal();
+                } else {
+                    alert(data.message || data.error || '重置失败');
+                }
+            } catch (err) {
+                alert('网络错误');
+            }
+        });
+
+        function closeModal() {
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            resetTargetId = null;
+        }
+    })();
+    </script>
+    <script src="/page-transition.js"></script>
+    <div class="page-transition-overlay"><div class="pt-skeleton"><div class="skeleton-header"></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div></div></div>
+</body>
+</html>

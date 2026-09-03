@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>设计任务 · Kosy Mosy · Parfum Studio</title>
+    <script>if(sessionStorage.getItem('pt'))document.documentElement.classList.add('pt')</script>
+    <link rel="icon" type="image/png" href="/images/perfume-logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link rel="stylesheet" href="/tailwind.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="parfum-studio">
+
+    <!-- ============ 左侧侧边栏导航 ============ -->
+    <aside class="fixed left-0 top-0 bottom-0 w-64 bg-sand-50/95 backdrop-blur-xl border-r border-sand-200 z-50 shadow-sm hidden md:flex flex-col" id="sidebar">
+        <div class="flex flex-col h-full px-4 py-6">
+            <!-- 品牌 Logo -->
+            <div class="mb-10 px-2">
+                <a href="index.html" class="block">
+                    <h1 class="font-serif text-xl tracking-wide text-ink">
+                        Parfum<span class="italic font-light"> · Studio</span>
+                    </h1>
+                </a>
+            </div>
+
+            <!-- 新建任务按钮 -->
+            <div class="mb-6">
+                <button id="newTaskBtnSidebar" class="w-full flex items-center justify-center gap-2 bg-forest-600 hover:bg-forest-700 text-sand-50 px-4 py-3 rounded-lg transition-all duration-300 text-sm">
+                    <span class="material-symbols-outlined text-[18px]">add</span>
+                    新建任务
+                </button>
+            </div>
+
+            <!-- 主导航菜单 -->
+            <nav class="flex-1 flex flex-col gap-1">
+                <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                    <span class="material-symbols-outlined text-[20px]">home</span>
+                    <span class="text-sm font-medium">首页</span>
+                </a>
+                <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                    <span class="material-symbols-outlined text-[20px]">auto_awesome</span>
+                    <span class="text-sm font-medium">工坊</span>
+                </a>
+                <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700 transition-colors duration-200">
+                    <span class="material-symbols-outlined text-[20px]">task_alt</span>
+                    <span class="text-sm font-medium">任务</span>
+                </a>
+                <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                    <span class="material-symbols-outlined text-[20px]">favorite</span>
+                    <span class="text-sm font-medium">历史记录</span>
+                </a>
+                <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                    <span class="material-symbols-outlined text-[20px]">info</span>
+                    <span class="text-sm font-medium">关于</span>
+                </a>
+            </nav>
+
+            <div class="w-full h-px bg-sand-200 my-6"></div>
+
+            <!-- 用户账户 -->
+            <div class="px-2">
+                <a href="#" onclick="try{var s=JSON.parse(localStorage.getItem('pcs_user_session')||'null');window.location.href=(s&&s.token)?'account':'login.html';return false;}catch(e){window.location.href='login.html';return false;}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200" id="accountLink">
+                    <span class="material-symbols-outlined text-[20px]">account_circle</span>
+                    <span class="text-sm font-medium" id="accountLabel">我的账户</span>
+                </a>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ============ 移动端导航 ============ -->
+    <header class="fixed top-0 left-0 right-0 z-50 md:hidden bg-sand-50/95 backdrop-blur-xl border-b border-sand-200 shadow-sm">
+        <div class="flex items-center justify-between h-16 px-4">
+            <a href="index.html" class="font-serif text-xl tracking-wide text-ink">
+                Parfum<span class="italic font-light"> · Studio</span>
+            </a>
+            <button id="mobileMenuBtn" class="w-8 h-8 flex items-center justify-center text-ink" aria-label="菜单">
+                <span class="material-symbols-outlined">menu</span>
+            </button>
+        </div>
+        <div id="mobileMenu" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden" onclick="var el=document.getElementById('mobileMenu');el.classList.add('hidden')">
+            <div class="absolute left-0 top-0 bottom-0 w-64 bg-sand-50 shadow-xl flex flex-col" onclick="event.stopPropagation()">
+                <div class="flex flex-col h-full p-4">
+                    <div class="mb-6">
+                        <button id="newTaskBtnMobile" class="w-full flex items-center justify-center gap-2 bg-forest-600 hover:bg-forest-700 text-sand-50 px-4 py-3 rounded-lg transition-all duration-300 text-sm">
+                            <span class="material-symbols-outlined text-[18px]">add</span>
+                            新建任务
+                        </button>
+                    </div>
+                    <nav class="flex-1 flex flex-col gap-1">
+                        <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">首页</a>
+                        <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">工坊</a>
+                        <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700">任务</a>
+                        <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">收藏</a>
+                        <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">关于</a>
+                        <a href="#" onclick="try{var s=JSON.parse(localStorage.getItem('pcs_user_session')||'null');window.location.href=(s&&s.token)?'account':'login.html';return false;}catch(e){window.location.href='login.html';return false;}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">我的账户</a>
+                    </nav>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- ============ 任务中心 ============ -->
+    <main class="min-h-screen pt-16 md:pt-0 md:pl-64 pb-24 bg-sand-50">
+        <div class="max-w-5xl mx-auto px-6 md:px-10">
+
+            <!-- Header -->
+            <div class="pt-8 mb-8 flex flex-col md:flex-row md:items-end md:justify-between gap-6">
+                <div>
+                    <p class="section-label mb-4">Kosy Mosy · 设计任务中心</p>
+                    <h2 class="heading-serif text-4xl md:text-5xl mb-2">设计 <span class="italic">任务</span></h2>
+                    <p class="text-ink-muted"><span id="kmUser">-</span>，这里有你的 <span id="kmCount">0</span> 个设计任务</p>
+                </div>
+                <button onclick="openModal()" class="btn-primary self-start md:self-auto">＋ 新建任务</button>
+            </div>
+
+            <!-- 搜索 + 清空 -->
+            <div class="flex items-center justify-between flex-wrap gap-4 mb-8 pb-6 border-b border-sand-200">
+                <div class="relative max-w-xs flex-1 min-w-[200px]">
+                    <span class="material-symbols-outlined absolute left-0 top-1/2 -translate-y-1/2 text-ink-muted text-[18px]">search</span>
+                    <input id="kmSearch" type="text" placeholder="搜索任务名称..." oninput="renderTasks()" class="w-full bg-transparent border-b border-ink/20 pl-7 py-2 text-sm text-ink focus:outline-none focus:border-forest-600 transition-colors placeholder:text-ink-muted/50" />
+                </div>
+                <button id="clearAllTasksBtn" class="text-xs tracking-widest uppercase text-clay-600 hover:text-clay-700 transition-colors flex items-center gap-1">
+                    <span class="material-symbols-outlined text-[16px]">delete_sweep</span>
+                    清空全部
+                </button>
+            </div>
+
+            <!-- 任务列表 -->
+            <div class="flex flex-col gap-6" id="kmList"></div>
+
+            <!-- 空状态 -->
+            <div class="hidden flex-col items-center justify-center py-24 text-center" id="kmEmpty">
+                <span class="material-symbols-outlined text-[64px] text-ink-muted/30 mb-4">assignment</span>
+                <p class="font-serif text-lg italic text-ink-muted mb-2">暂无设计任务</p>
+                <p class="text-sm text-ink-muted/70 mb-8">点击右上角「新建任务」，开始你的第一支香水设计</p>
+                <button onclick="openModal()" class="btn-primary">＋ 新建任务</button>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ============ Footer ============ -->
+    <footer class="bg-forest-900 text-sand-100 md:pl-64">
+        <div class="max-w-7xl mx-auto px-6 md:px-10 py-12">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-end gap-6">
+                <div>
+                    <p class="font-serif text-2xl mb-3">Kosy Mosy<span class="italic font-light"> · Studio</span></p>
+                    <p class="text-sand-100/60 text-sm">AI 驱动的香水设计任务中心</p>
+                </div>
+                <div class="flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-8">
+                    <a href="index.html#scent-families" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">香调</a>
+                    <div class="text-sand-100/40 text-xs tracking-widest uppercase">© 2026 Kosy Mosy · Parfum Studio</div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <!-- ============ 新建任务弹窗（平滑过渡） ============ -->
+    <div class="fixed inset-0 z-[100] flex items-center justify-center p-5 modal-overlay hidden" id="kmModal">
+        <div class="bg-sand-50 w-full max-w-xl max-h-[90vh] overflow-y-auto relative modal-content">
+            <div class="sticky top-0 bg-sand-50 border-b border-sand-200 px-8 pt-7 pb-5 flex justify-between items-center">
+                <div>
+                    <p class="section-label mb-2">Kosy Mosy</p>
+                    <h3 class="font-serif text-2xl">新建设计任务</h3>
+                </div>
+                <button onclick="closeModal()" class="text-ink-muted hover:text-ink transition-colors" aria-label="关闭">
+                    <span class="material-symbols-outlined">close</span>
+                </button>
+            </div>
+            <div class="px-8 py-6">
+                <div class="bg-forest-100 text-forest-800 text-sm leading-relaxed px-4 py-3 mb-6">
+                    输入你的香水设计概念，AI 将自动解析并生成设计图。工作流内部会自动理解意图，无需填写具体参数。
+                </div>
+
+                <label class="section-label block mb-3">任务名称</label>
+                <input id="kmName" type="text" placeholder="如：圣诞限定款" class="w-full bg-transparent border border-sand-300 px-4 py-3 text-sm text-ink focus:outline-none focus:border-forest-600 transition-colors mb-6 placeholder:text-ink-muted/50" />
+
+                <label class="section-label block mb-3">描述你的香水概念</label>
+                <textarea id="kmInput" rows="5" placeholder="方形玻璃香水瓶，200ml，琥珀色液体，金色瓶盖，黑色扩香条，经典圣诞红礼盒，金色城市天际线装饰，目标人群28-40岁女性" class="w-full bg-transparent border border-sand-300 px-4 py-3 text-sm text-ink leading-relaxed focus:outline-none focus:border-forest-600 transition-colors mb-6 resize-vertical placeholder:text-ink-muted/50"></textarea>
+
+                <label class="section-label block mb-3">参考图（可选）</label>
+                <div id="kmZone" onclick="document.getElementById('kmFile').click()" class="border-2 border-dashed border-sand-300 px-4 py-8 text-center cursor-pointer transition-all hover:border-forest-500 hover:bg-forest-50 mb-3">
+                    <span class="material-symbols-outlined text-3xl text-ink-muted/50 block mb-2">upload_file</span>
+                    <p class="text-sm text-ink-muted">点击或拖拽上传图片</p>
+                    <input type="file" id="kmFile" accept="image/*" class="hidden" onchange="handleFile(this)" />
+                </div>
+                <div id="kmUploaded" class="hidden items-center gap-4 bg-forest-100 px-4 py-3 mb-6">
+                    <img id="kmThumb" src="" alt="" class="w-12 h-12 object-cover" />
+                    <div class="flex-1 min-w-0">
+                        <p class="text-sm text-ink truncate" id="kmFileName"></p>
+                        <p class="text-xs text-ink-muted" id="kmFileId"></p>
+                    </div>
+                    <button onclick="removeUpload()" class="text-clay-600 hover:text-clay-700 text-sm tracking-widest uppercase transition-colors">移除</button>
+                </div>
+
+                <div class="flex justify-end gap-4 pt-4 border-t border-sand-200">
+                    <button onclick="closeModal()" class="px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:border-ink-muted transition-all">取消</button>
+                    <button id="kmLaunch" onclick="createTask()" class="btn-primary">生成预览图</button>
+                </div>
+                <p id="kmMsg" class="text-clay-600 text-sm mt-4 min-h-5"></p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="kmToast" class="fixed top-24 left-1/2 -translate-x-1/2 z-[200] km-toast px-6 py-3 rounded text-sm shadow-lg opacity-0 pointer-events-none transition-opacity duration-300 max-w-[90vw]"></div>
+
+    <script>
+        // ============================================================
+        // Kosy Mosy · 设计任务中心（复用 Parfum Studio 登录态）
+        // ============================================================
+        const STATUS = {
+            queued: ['排队中', 'queued'],
+            processing: ['处理中', 'processing'],
+            waiting_confirm: ['等待确认', 'waiting_confirm'],
+            done: ['已完成', 'done'],
+            failed: ['失败', 'failed']
+        };
+        let TASKS = [];
+        let BUSY = {};
+        let uploaded = null;
+
+        // ---------- 登录守卫 + 会话 ----------
+        function getAuthToken() {
+            try {
+                const s = JSON.parse(localStorage.getItem('pcs_user_session') || 'null');
+                return s && s.token ? s.token : null;
+            } catch (e) { return null; }
+        }
+
+        async function api(path, opts = {}) {
+            const token = getAuthToken();
+            const res = await fetch(path, {
+                ...opts,
+                headers: {
+                    'Content-Type': 'application/json',
+                    ...(token ? { Authorization: 'Bearer ' + token } : {}),
+                    ...(opts.headers || {})
+                }
+            });
+            if (res.status === 401) { window.location.replace('login.html'); throw new Error('未登录'); }
+            const j = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(j.error || ('HTTP ' + res.status));
+            return j;
+        }
+
+        // ---------- 渲染 ----------
+        function esc(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+        function renderTasks() {
+            const kw = document.getElementById('kmSearch').value.trim().toLowerCase();
+            const list = document.getElementById('kmList');
+            const empty = document.getElementById('kmEmpty');
+            const tasks = kw ? TASKS.filter(t => t.name.toLowerCase().includes(kw)) : TASKS;
+            document.getElementById('kmCount').textContent = TASKS.length;
+
+            empty.classList.toggle('hidden', tasks.length > 0);
+            empty.classList.toggle('flex', tasks.length === 0);
+            if (tasks.length === 0) { list.innerHTML = ''; return; }
+
+            list.innerHTML = tasks.map(t => {
+                const [label, cls] = STATUS[t.status] || [t.status, 'queued'];
+                const badge = `<span class="km-status ${cls} status-badge">${label}</span>`;
+                const time = (t.createdAt || '').replace('T', ' ').slice(0, 16);
+                const round = t.conversation?.round ? ` · 修改 ${t.conversation.round} 轮` : '';
+
+                let body = '';
+                if (t.status === 'queued') {
+                    body = `<div class="flex items-center gap-4 py-6 text-ink-muted text-sm"><div class="km-spinner"></div>任务已创建，等待启动工作流...</div>`;
+                } else if (t.status === 'processing') {
+                    body = `<div class="flex items-center gap-4 py-6 text-ink-muted text-sm"><div class="km-spinner"></div>AI 正在设计生成中，通常需要 1-3 分钟...</div>`;
+                } else if (t.status === 'waiting_confirm') {
+                    const img = t.result?.preview_image;
+                    // 解析中断数据，提取问题描述和选项
+                    const interruptData = t.conversation?.interrupt_data;
+                    let questionText = '';
+                    let options = [];
+                    let isConfirm = false;
+                    if (interruptData) {
+                        const desc = interruptData.required_parameters?.QUESTION_DATA?.description
+                            || (typeof interruptData.data === 'string' ? interruptData.data : '')
+                            || interruptData.content || '';
+                        if (desc) {
+                            const lines = desc.split('\n');
+                            questionText = lines[0] || '';
+                            const optRe = /^\s*-\s*\[(x| )\]\s*(.+)$/;
+                            for (const line of lines) {
+                                const m = line.match(optRe);
+                                if (m) options.push({ checked: m[1] === 'x', text: m[2].trim() });
+                            }
+                            isConfirm = options.length > 0;
+                        }
+                    }
+                    if (!questionText) questionText = '效果满意吗？';
+                    // 确认类问答：显示选项按钮 + 修改意见输入框
+                    body = `
+                        ${img ? `<div class="mb-5"><img src="${esc(img)}" alt="预览图" class="w-full max-w-md border border-sand-200 block preview-image loaded" onerror="this.parentElement.style.display='none'"></div>` : ''}
+                        <div class="bg-amber-50 border border-amber-200/50 rounded-xl px-5 py-5">
+                            <p class="text-amber-900 text-sm font-medium mb-4">${esc(questionText)}</p>
+                            ${isConfirm ? `<div class="flex flex-wrap gap-3 mb-4">${options.map(opt => {
+                                const cls = opt.checked ? 'bg-forest-700 text-sand-50 hover:bg-forest-800' : 'border border-sand-300 text-ink bg-white hover:bg-sand-100';
+                                return `<button onclick="resumeTask(${JSON.stringify(t.id)}, ${JSON.stringify(opt.text)})" class="px-4 py-2.5 rounded-lg text-sm transition-colors ${cls}">${esc(opt.text)}</button>`;
+                            }).join('')}</div>` : ''}
+                            <p class="section-label mb-3">或者提出修改意见</p>
+                            <div class="flex flex-col sm:flex-row gap-3">
+                                <input type="text" id="kmModify_${t.id}" placeholder="如：瓶盖改为银色，液体颜色再深一点..." onkeydown="if(event.key==='Enter')resumeWithInput('${t.id}')" class="flex-1 bg-transparent border border-sand-300 px-4 py-2.5 text-sm text-ink focus:outline-none focus:border-forest-600 placeholder:text-ink-muted/50">
+                                <button onclick="resumeWithInput('${t.id}')" class="px-6 py-2.5 text-sm tracking-widest uppercase border border-forest-700 text-forest-700 hover:bg-forest-100 transition-all whitespace-nowrap">提交修改</button>
+                            </div>
+                        </div>`;
+                } else if (t.status === 'done') {
+                    const imgs = t.result?.multi_angle_images || [];
+                    const preview = t.result?.preview_image;
+                    body = `
+                        ${preview ? `<div class="mb-5"><img src="${esc(preview)}" alt="预览图" class="w-full max-w-md border border-sand-200 block preview-image loaded" onerror="this.parentElement.style.display='none'"></div>` : ''}
+                        ${imgs.length ? `<div class="grid grid-cols-3 sm:grid-cols-6 gap-3 mb-5">${imgs.map((u, i) => `<div class="relative border border-sand-200 aspect-square bg-sand-100 overflow-hidden group"><img src="${esc(u)}" alt="角度${i + 1}" loading="lazy" class="w-full h-full object-cover" onerror="this.style.display='none'"><span class="absolute bottom-0 inset-x-0 bg-ink/50 text-sand-50 text-[10px] text-center py-0.5">角度 ${i + 1}</span></div>`).join('')}</div>` : ''}
+                        <button onclick="downloadAll('${t.id}')" class="btn-ghost inline-flex items-center gap-2"><span class="material-symbols-outlined text-[16px]">download</span>下载全部</button>`;
+                } else if (t.status === 'failed') {
+                    body = `
+                        <div class="bg-clay-100 text-clay-700 px-5 py-4 text-sm leading-relaxed mb-5">✕ ${esc(t.error || '未知错误')}</div>
+                        <button onclick="retryTask('${t.id}')" class="px-6 py-2.5 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:border-forest-600 hover:text-forest-700 transition-all">重试</button>`;
+                }
+
+                const deletable = ['done', 'failed', 'queued'].includes(t.status);
+                return `
+                <div class="task-card bg-white border border-sand-200 px-6 py-5" id="card_${t.id}">
+                    <div class="flex justify-between items-start gap-4 mb-4">
+                        <div>
+                            <p class="font-serif text-xl text-ink">${esc(t.name)}</p>
+                            <p class="text-xs text-ink-muted mt-1">创建于 ${time}${round}</p>
+                        </div>
+                        ${badge}
+                    </div>
+                    <div class="bg-sand-50 border-l-2 border-forest-200 px-4 py-3 mb-5 text-sm text-ink-light leading-relaxed">${esc(t.params?.user_input || '')}</div>
+                    ${body}
+                    <div class="flex justify-between items-center pt-4 border-t border-sand-100 mt-4">
+                        <div class="flex gap-3">
+                            ${(t.status === 'done' || t.status === 'failed') && t.status !== 'failed' ? `<button onclick="retryTask('${t.id}')" class="text-xs tracking-widest uppercase text-ink-muted hover:text-forest-700 transition-colors">重新生成</button>` : ''}
+                        </div>
+                        ${deletable ? `<button onclick="deleteTask('${t.id}')" class="text-xs tracking-widest uppercase text-clay-600 hover:text-clay-700 transition-colors">删除</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+
+            // 给新卡片添加入场动画（entered 类触发 cardEnter 动画）
+            document.querySelectorAll('.task-card:not(.entered)').forEach(card => {
+                card.classList.add('entered');
+            });
+        }
+
+        async function loadTasks() {
+            try {
+                const j = await api('/api/tasks');
+                TASKS = j.tasks || [];
+                renderTasks();
+            } catch (e) { toast('加载失败：' + e.message); }
+        }
+
+        // ---------- 弹窗（平滑过渡） ----------
+        function openModal() {
+            const overlay = document.getElementById('kmModal');
+            overlay.classList.remove('hidden');
+            document.body.style.overflow = 'hidden';
+            // 下一帧触发过渡动画
+            requestAnimationFrame(() => {
+                overlay.classList.add('active');
+            });
+            // 点击遮罩层关闭弹窗（点击内容区域不关闭）
+            overlay.onclick = function(e) {
+                if (e.target === overlay) closeModal();
+            };
+        }
+        window.closeModal = function () {
+            const overlay = document.getElementById('kmModal');
+            if (!overlay) return;
+            overlay.classList.add('hidden');
+            overlay.classList.remove('active');
+            document.body.style.overflow = '';
+            const msg = document.getElementById('kmMsg');
+            if (msg) msg.textContent = '';
+        };
+
+        // ---------- 上传 ----------
+        function handleFile(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            if (!file.type.startsWith('image/')) return toast('请选择图片文件');
+            if (file.size > 5 * 1024 * 1024) return toast('图片不能超过 5MB');
+            const zone = document.getElementById('kmZone');
+            const orig = zone.innerHTML;
+            zone.innerHTML = '<div class="km-spinner mx-auto mb-2"></div><p class="text-sm text-ink-muted">上传中...</p>';
+            const fd = new FormData();
+            fd.append('file', file);
+            fetch('/api/upload/image', {
+                method: 'POST',
+                headers: { Authorization: 'Bearer ' + getAuthToken() },
+                body: fd
+            }).then(async r => {
+                const j = await r.json().catch(() => ({}));
+                if (!r.ok) throw new Error(j.error || '上传失败');
+                uploaded = { file_id: j.file_id, name: file.name, url: URL.createObjectURL(file) };
+                document.getElementById('kmThumb').src = uploaded.url;
+                document.getElementById('kmFileName').textContent = file.name;
+                document.getElementById('kmFileId').textContent = 'file_id: ' + j.file_id;
+                const up = document.getElementById('kmUploaded');
+                up.classList.remove('hidden'); up.classList.add('flex');
+                toast('参考图上传成功');
+            }).catch(e => toast('上传失败：' + e.message)).finally(() => {
+                zone.innerHTML = orig;
+                zone.onclick = () => document.getElementById('kmFile').click();
+                document.getElementById('kmFile').onchange = function () { handleFile(this); };
+            });
+        }
+
+        function removeUpload() {
+            uploaded = null;
+            const up = document.getElementById('kmUploaded');
+            up.classList.add('hidden'); up.classList.remove('flex');
+            document.getElementById('kmFile').value = '';
+        }
+
+        // 拖拽
+        const zone = document.getElementById('kmZone');
+        zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('km-upload-drag'); });
+        zone.addEventListener('dragleave', () => zone.classList.remove('km-upload-drag'));
+        zone.addEventListener('drop', e => {
+            e.preventDefault();
+            zone.classList.remove('km-upload-drag');
+            const dt = new DataTransfer();
+            dt.items.add(e.dataTransfer.files[0]);
+            document.getElementById('kmFile').files = dt.files;
+            handleFile(document.getElementById('kmFile'));
+        });
+
+        // ---------- 创建任务 ----------
+        async function createTask() {
+            const name = document.getElementById('kmName').value.trim();
+            const userInput = document.getElementById('kmInput').value.trim();
+            const msg = document.getElementById('kmMsg');
+            const btn = document.getElementById('kmLaunch');
+            if (!name) return msg.textContent = '请填写任务名称';
+            if (!userInput) return msg.textContent = '请描述你的香水设计概念';
+            btn.disabled = true; btn.textContent = '创建中...'; msg.textContent = '';
+            try {
+                const j = await api('/api/tasks', {
+                    method: 'POST',
+                    body: JSON.stringify({ name, params: { user_input: userInput, image_file_id: uploaded?.file_id || '' } })
+                });
+                closeModal();
+                document.getElementById('kmName').value = '';
+                document.getElementById('kmInput').value = '';
+                removeUpload();
+                await loadTasks();
+                toast('任务已创建，启动 AI 工作流...');
+                startWorkflow(j.task);
+            } catch (e) { msg.textContent = e.message; }
+            finally { btn.disabled = false; btn.textContent = '生成预览图'; }
+        }
+
+        // ---------- 工作流 SSE ----------
+        async function readSSE(path, body) {
+            const res = await fetch(path, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + getAuthToken() },
+                body: JSON.stringify(body)
+            });
+            if (res.status === 401) { window.location.replace('login.html'); throw new Error('未登录'); }
+            const ct = res.headers.get('content-type') || '';
+            if (!res.ok || !ct.includes('event-stream')) {
+                const j = await res.json().catch(() => ({}));
+                throw new Error(j.error || ('HTTP ' + res.status));
+            }
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let buf = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buf += decoder.decode(value, { stream: true });
+                let idx;
+                while ((idx = buf.indexOf('\n\n')) >= 0) {
+                    const chunk = buf.slice(0, idx);
+                    buf = buf.slice(idx + 2);
+                    for (const line of chunk.split('\n')) {
+                        if (!line.startsWith('data:')) continue;
+                        try { handleEvent(JSON.parse(line.slice(5).trim())); } catch (e) { }
+                    }
+                }
+            }
+        }
+
+        function handleEvent(ev) {
+            if (!ev.task) return;
+            const i = TASKS.findIndex(t => t.id === ev.task.id);
+            if (i >= 0) TASKS[i] = ev.task; else TASKS.unshift(ev.task);
+            // 如果 Interrupt 事件携带了 interrupt_data 和 interrupt_id，存入任务 conversation
+            if (ev.event === 'Interrupt' || ev.coze_event === 'Interrupt') {
+                const t = TASKS.find(x => x.id === ev.task.id);
+                if (t) {
+                    if (!t.conversation) t.conversation = {};
+                    if (ev.interrupt_data) t.conversation.interrupt_data = ev.interrupt_data;
+                    if (ev.interrupt_id) t.conversation.interrupt_id = ev.interrupt_id;
+                }
+            }
+            renderTasks();
+            if (ev.status_changed) {
+                if (ev.task.status === 'waiting_confirm') toast('预览图已生成，等待你的确认');
+                if (ev.task.status === 'done') toast('设计完成！');
+                if (ev.task.status === 'failed') toast('生成失败：' + (ev.task.error || ''));
+            }
+        }
+
+        async function startWorkflow(task) {
+            if (BUSY[task.id]) return;
+            BUSY[task.id] = true;
+            try {
+                await readSSE('/api/workflow/start', {
+                    task_id: task.id,
+                    user_input: task.params?.user_input,
+                    image_file_id: task.params?.image_file_id || ''
+                });
+            } catch (e) { toast('工作流异常：' + e.message); }
+            finally { delete BUSY[task.id]; await loadTasks(); }
+        }
+
+        async function resumeTask(id, data) { await doResume(id, data); }
+        async function resumeWithInput(id) {
+            const v = document.getElementById('kmModify_' + id).value.trim();
+            if (!v) return toast('请输入修改意见');
+            await doResume(id, v);
+        }
+        async function doResume(id, data) {
+            const t = TASKS.find(x => x.id === id);
+            if (!t || BUSY[id]) return;
+            const iid = t.conversation?.interrupt_id;
+            if (!iid) return toast('缺少中断 ID，请重新生成');
+            BUSY[id] = true;
+            t.status = 'processing';
+            renderTasks();
+            try {
+                await readSSE('/api/workflow/resume', { task_id: id, interrupt_id: iid, resume_data: data });
+            } catch (e) { toast('工作流异常：' + e.message); }
+            finally { delete BUSY[id]; await loadTasks(); }
+        }
+
+        async function retryTask(id) {
+            const t = TASKS.find(x => x.id === id);
+            if (!t || BUSY[id]) return;
+            BUSY[id] = true;
+            t.status = 'processing';
+            renderTasks();
+            try {
+                await readSSE('/api/workflow/start', {
+                    task_id: id,
+                    user_input: t.params?.user_input,
+                    image_file_id: t.params?.image_file_id || ''
+                });
+            } catch (e) { toast('重试失败：' + e.message); }
+            finally { delete BUSY[id]; await loadTasks(); }
+        }
+
+        async function deleteTask(id) {
+            if (!confirm('确定删除这个任务吗？删除后不可恢复。')) return;
+            const card = document.getElementById('card_' + id);
+            if (card) {
+                card.classList.add('removing');
+                await new Promise(r => setTimeout(r, 400));
+            }
+            try {
+                await api('/api/tasks/' + id, { method: 'DELETE' });
+                TASKS = TASKS.filter(t => t.id !== id);
+                renderTasks();
+                toast('任务已删除');
+            } catch (e) { toast('删除失败：' + e.message); }
+        }
+
+        async function downloadAll(id) {
+            const t = TASKS.find(x => x.id === id);
+            if (!t) return;
+            const urls = [...new Set([...(t.result?.multi_angle_images || []), t.result?.preview_image, t.result?.final_image].filter(Boolean))];
+            if (!urls.length) return toast('没有可下载的图片');
+            toast(`开始下载 ${urls.length} 张图片...`);
+            for (let i = 0; i < urls.length; i++) {
+                try {
+                    const res = await fetch(urls[i]);
+                    const blob = await res.blob();
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${t.name}-${i + 1}.png`;
+                    document.body.appendChild(a); a.click(); a.remove();
+                    URL.revokeObjectURL(a.href);
+                    await new Promise(r => setTimeout(r, 400));
+                } catch (e) { window.open(urls[i], '_blank'); }
+            }
+        }
+
+        // ---------- Toast ----------
+        function toast(msg) {
+            const t = document.getElementById('kmToast');
+            t.textContent = msg;
+            t.style.opacity = 1;
+            clearTimeout(t._tm);
+            t._tm = setTimeout(() => t.style.opacity = 0, 3000);
+        }
+
+        // ---------- 清空全部任务 ----------
+        document.getElementById('clearAllTasksBtn').addEventListener('click', async function () {
+            const total = TASKS.length;
+            if (total === 0) {
+                toast('当前没有任务可清空');
+                return;
+            }
+            if (!confirm(`确认清空全部 ${total} 个任务吗？此操作不可撤销。`)) return;
+
+            try {
+                const res = await api('/api/tasks/clear', { method: 'DELETE' });
+                if (res.success) {
+                    TASKS = [];
+                    renderTasks();
+                    toast(`已清空 ${res.deletedCount || total} 个任务`);
+                } else {
+                    toast('清空失败：' + (res.error || '未知错误'));
+                }
+            } catch (e) {
+                toast('清空失败：' + e.message);
+            }
+        });
+
+        // ---------- 初始化：登录守卫 ----------
+        (async function init() {
+            if (!getAuthToken()) { window.location.replace('login.html'); return; }
+            try {
+                const me = await api('/api/me');
+                document.getElementById('kmUser').textContent = me.user?.display_name || me.user?.designer_id || '设计师';
+            } catch (e) { /* api() 已处理 401 跳转 */ }
+            await loadTasks();
+        })();
+    </script>
+    <script>
+        // 移动端菜单切换
+        (function() {
+            const btn = document.getElementById('mobileMenuBtn');
+            const menu = document.getElementById('mobileMenu');
+            if (btn && menu) {
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    menu.classList.toggle('hidden');
+                    requestAnimationFrame(function() {
+                        menu.classList.toggle('active');
+                    });
+                });
+                document.addEventListener('click', function(e) {
+                    if (!btn.contains(e.target) && !menu.contains(e.target) && menu.classList.contains('active')) {
+                        menu.classList.remove('active');
+                        setTimeout(function() { menu.classList.add('hidden'); }, 300);
+                    }
+                });
+            }
+
+            // 新建任务按钮点击事件
+            document.querySelectorAll('#newTaskBtn, #newTaskBtnMobile, #newTaskBtnSidebar').forEach(btn => {
+                if (btn) btn.addEventListener('click', () => {
+                    // 打开新建任务弹窗
+                    const modal = document.getElementById('kmModal');
+                    if (modal) {
+                        modal.classList.remove('hidden');
+                        document.body.style.overflow = 'hidden';
+                        requestAnimationFrame(() => modal.classList.add('active'));
+                    }
+                });
+            });
+        })();
+    </script>
+    <div class="page-transition-overlay"><div class="pt-skeleton"><div class="skeleton-header"></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div></div></div>
+<script src="/page-transition.js"></script>
+</body>
+</html>

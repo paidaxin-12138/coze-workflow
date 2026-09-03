@@ -1,0 +1,7 @@
+/* PostCSS @import 必须在最前面 */
+@import "tailwindcss/base";
+@import "tailwindcss/components";
+@import "tailwindcss/utilities";
+
+/* 项目自定义样式（含 @layer base、自定义类、keyframes） */
+/* @import "../style.css"; */

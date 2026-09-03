@@ -1,0 +1,720 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>工坊 · Parfum Studio</title>
+    <script>if(sessionStorage.getItem('pt'))document.documentElement.classList.add('pt')</script>
+    <link rel="icon" type="image/png" href="/images/perfume-logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link rel="stylesheet" href="/tailwind.css">
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* 三栏布局辅助 */
+        .three-col-layout {
+            height: 100vh;
+            display: flex;
+            overflow: hidden;
+        }
+        .sidebar-left {
+            width: 14rem; /* w-56 */
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            background: rgba(250, 248, 244, 0.95);
+            backdrop-filter: blur(20px);
+            border-right: 1px solid #e2dcd3;
+        }
+        .center-workspace {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            min-width: 0;
+        }
+        .sidebar-right {
+            width: 20rem; /* w-80 */
+            flex-shrink: 0;
+            border-left: 1px solid #e2dcd3;
+            background: rgba(250, 248, 244, 0.8);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        @media (min-width: 768px) and (max-width: 1023px) {
+            .sidebar-right { width: 16rem; } /* md: w-64 */
+        }
+        @media (max-width: 767px) {
+            .three-col-layout {
+                height: auto;
+                display: block;
+                overflow-x: hidden;
+                overflow-y: visible;
+            }
+            .sidebar-left { display: none; }
+            .sidebar-right { display: none; }
+            .center-workspace { overflow-x: hidden; overflow-y: visible; }
+        }
+        .task-card {
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .task-card:hover {
+            border-color: #b5aea3;
+        }
+        .task-card.active {
+            border-color: #4a5d38;
+            background: rgba(74, 93, 56, 0.06);
+        }
+        .task-card .progress-bar {
+            transition: width 0.5s ease;
+        }
+        .task-card-enter {
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .task-card {
+            min-height: 82px;
+        }
+        .right-panel-header {
+            flex-shrink: 0;
+        }
+        .right-panel-body {
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
+        }
+    </style>
+</head>
+<body class="parfum-studio">
+
+    <!-- ============================================= -->
+    <!-- 三栏布局容器                                  -->
+    <!-- ============================================= -->
+    <div class="three-col-layout">
+
+        <!-- ============ 左侧导航栏 (w-56) ============ -->
+        <aside class="sidebar-left hidden md:flex" id="sidebar">
+            <div class="flex flex-col h-full px-4 py-6">
+                <!-- 品牌 Logo -->
+                <div class="mb-10 px-2">
+                    <a href="index.html" class="block">
+                        <h1 class="font-serif text-xl tracking-wide text-ink">
+                            Parfum<span class="italic font-light"> · Studio</span>
+                        </h1>
+                    </a>
+                </div>
+
+                <!-- 新建任务按钮 -->
+                <div class="mb-6">
+                    <button id="newTaskBtnSidebar" class="w-full flex items-center justify-center gap-2 bg-forest-600 hover:bg-forest-700 text-sand-50 px-4 py-3 rounded-lg transition-all duration-300 text-sm">
+                        <span class="material-symbols-outlined text-[18px]">add</span>
+                        新建任务
+                    </button>
+                </div>
+
+                <!-- 主导航菜单 -->
+                <nav class="flex-1 flex flex-col gap-1">
+                    <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                        <span class="material-symbols-outlined text-[20px]">home</span>
+                        <span class="text-sm font-medium">首页</span>
+                    </a>
+                    <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700 transition-colors duration-200">
+                        <span class="material-symbols-outlined text-[20px]">auto_awesome</span>
+                        <span class="text-sm font-medium">工坊</span>
+                    </a>
+                    <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                        <span class="material-symbols-outlined text-[20px]">task_alt</span>
+                        <span class="text-sm font-medium">任务</span>
+                    </a>
+                    <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                        <span class="material-symbols-outlined text-[20px]">history</span>
+                        <span class="text-sm font-medium">历史记录</span>
+                    </a>
+                    <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                        <span class="material-symbols-outlined text-[20px]">info</span>
+                        <span class="text-sm font-medium">关于</span>
+                    </a>
+                </nav>
+
+                <div class="w-full h-px bg-sand-200 my-6"></div>
+
+                <!-- 用户账户 -->
+                <div class="px-2">
+                    <a href="#" onclick="try{var s=JSON.parse(localStorage.getItem('pcs_user_session')||'null');window.location.href=(s&&s.token)?'account':'login.html';return false;}catch(e){window.location.href='login.html';return false;}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200" id="accountLink">
+                        <span class="material-symbols-outlined text-[20px]">account_circle</span>
+                        <span class="text-sm font-medium" id="accountLabel">登录</span>
+                    </a>
+                </div>
+            </div>
+        </aside>
+
+        <!-- ============ 移动端导航 ============ -->
+        <header class="fixed top-0 left-0 right-0 z-50 md:hidden bg-sand-50/95 backdrop-blur-xl border-b border-sand-200 shadow-sm">
+            <div class="flex items-center justify-between h-16 px-4">
+                <a href="index.html" class="font-serif text-xl tracking-wide text-ink">
+                    Parfum<span class="italic font-light"> · Studio</span>
+                </a>
+                <button id="mobileMenuBtn" class="w-8 h-8 flex items-center justify-center text-ink" aria-label="菜单">
+                    <span class="material-symbols-outlined">menu</span>
+                </button>
+            </div>
+            <div id="mobileMenu" class="fixed inset-0 bg-black/50 z-40 hidden md:hidden" onclick="var el=document.getElementById('mobileMenu');el.classList.add('hidden')">
+                <div class="absolute left-0 top-0 bottom-0 w-64 bg-sand-50 shadow-xl flex flex-col" onclick="event.stopPropagation()">
+                    <div class="flex flex-col h-full p-4">
+                        <div class="mb-6">
+                            <button id="newTaskBtnMobile" class="w-full flex items-center justify-center gap-2 bg-forest-600 hover:bg-forest-700 text-sand-50 px-4 py-3 rounded-lg transition-all duration-300 text-sm">
+                                <span class="material-symbols-outlined text-[18px]">add</span>
+                                新建任务
+                            </button>
+                        </div>
+                        <nav class="flex-1 flex flex-col gap-1">
+                            <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">首页</a>
+                            <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700">工坊</a>
+                            <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
+                            <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">历史记录</a>
+                            <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">关于</a>
+                            <a href="#" onclick="try{var s=JSON.parse(localStorage.getItem('pcs_user_session')||'null');window.location.href=(s&&s.token)?'account':'login.html';return false;}catch(e){window.location.href='login.html';return false;}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">登录</a>
+                        </nav>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- ============ 中间工作区 ============ -->
+        <main class="center-workspace md:pt-0 pt-16" id="studio">
+            <div class="w-full max-w-[1400px] mx-auto px-4 sm:px-6 md:px-10 pt-8 md:pt-12">
+                <div class="text-center mb-8 pt-8">
+                    <p class="section-label mb-4">工坊</p>
+                    <h2 class="heading-serif text-4xl md:text-5xl mb-4">构思你的 <span class="italic">概念</span></h2>
+                    <p class="text-ink-muted max-w-xl mx-auto">用自己的语言描述一支香氛。工作流将分析你的简报，选择香调，渲染概念图，并撰写档案。</p>
+                </div>
+
+                <!-- 三步引导（横向排列） -->
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
+                    <div class="bg-sand-100/60 border border-sand-200 p-6 hover:border-forest-300 transition-all duration-300">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="w-8 h-8 rounded-full bg-forest-700 text-sand-50 text-sm flex items-center justify-center font-medium">01</span>
+                            <span class="text-xs tracking-widest uppercase text-forest-700 font-medium">输入设计灵感</span>
+                        </div>
+                        <p class="text-sm text-ink-muted leading-relaxed">用自然语言描述你的香氛概念、目标人群、风格偏好</p>
+                    </div>
+                    <div class="bg-sand-100/60 border border-sand-200 p-6 hover:border-forest-300 transition-all duration-300">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="w-8 h-8 rounded-full bg-forest-700 text-sand-50 text-sm flex items-center justify-center font-medium">02</span>
+                            <span class="text-xs tracking-widest uppercase text-forest-700 font-medium">AI 提取设计规范</span>
+                        </div>
+                        <p class="text-sm text-ink-muted leading-relaxed">AI 会解析你的灵感，提取并展示设计规范供你确认</p>
+                    </div>
+                    <div class="bg-sand-100/60 border border-sand-200 p-6 hover:border-forest-300 transition-all duration-300">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="w-8 h-8 rounded-full bg-forest-700 text-sand-50 text-sm flex items-center justify-center font-medium">03</span>
+                            <span class="text-xs tracking-widest uppercase text-forest-700 font-medium">生成概念图</span>
+                        </div>
+                        <p class="text-sm text-ink-muted leading-relaxed">确认后，AI 开始为你生成多角度香水概念图</p>
+                    </div>
+                </div>
+
+                <!-- 输入面板 -->
+                <div class="bg-sand-100/60 border border-sand-200 p-8 md:p-12 mb-10">
+                    <form id="workflow-form">
+                        <label class="section-label block mb-4">步骤一：请输入你的设计灵感</label>
+                        <div class="relative">
+                            <textarea
+                                class="w-full bg-transparent border-b border-ink/20 px-0 py-3 text-ink text-lg placeholder:text-ink-muted/40 focus:outline-none focus:border-forest-600 transition-colors duration-300 resize-none min-h-[120px] font-serif"
+                                id="promptInput"
+                                name="user-input"
+                                placeholder="清晨薄雾中的森林，湿润的泥土与松针，空寂庙宇的宁静..."
+                                rows="6"
+                                required
+                            ></textarea>
+                            <div class="absolute right-0 bottom-3 text-xs text-ink-muted" id="charCount">0 / 500</div>
+                        </div>
+                        <p class="text-xs text-ink-muted mt-3">💡 AI 会帮助你进行灵感的梳理和完善</p>
+
+                        <!-- 灵感示例 -->
+                        <div class="mt-6">
+                            <p class="text-xs text-ink-muted mb-3">或从以下灵感中汲取：</p>
+                            <div class="flex flex-wrap gap-2">
+                                <button type="button" class="example-prompt text-xs text-ink-light border border-ink/10 px-3 py-1.5 hover:border-forest-500 hover:text-forest-700 transition-all duration-300" data-prompt="清晨薄雾中的森林，湿润的泥土与松针，空寂庙宇的宁静">清晨薄雾中的森林</button>
+                                <button type="button" class="example-prompt text-xs text-ink-light border border-ink/10 px-3 py-1.5 hover:border-forest-500 hover:text-forest-700 transition-all duration-300" data-prompt="地中海阳光温暖的柑橘园，微风中飘来绿茶与无花果叶的气息">地中海柑橘园</button>
+                                <button type="button" class="example-prompt text-xs text-ink-light border border-ink/10 px-3 py-1.5 hover:border-forest-500 hover:text-forest-700 transition-all duration-300" data-prompt="一间藏满旧书的图书馆，檀香木书架旁，一杯冒着热气的红茶">旧书图书馆</button>
+                                <button type="button" class="example-prompt text-xs text-ink-light border border-ink/10 px-3 py-1.5 hover:border-forest-500 hover:text-forest-700 transition-all duration-300" data-prompt="围墙花园中夜间绽放的茉莉，满月下浓郁而甜蜜">月下茉莉</button>
+                                <button type="button" class="example-prompt text-xs text-ink-light border border-ink/10 px-3 py-1.5 hover:border-forest-500 hover:text-forest-700 transition-all duration-300" data-prompt="马拉喀什的香料市场，小豆蔻与乳香，阳光中温暖的琥珀树脂">马拉喀什市场</button>
+                            </div>
+                        </div>
+
+                        <!-- 参考图上传 -->
+                        <div class="mt-6">
+                            <label class="section-label block mb-3">Reference · 参考图（可选）</label>
+                            <div id="refZone" class="border border-dashed border-sand-300 px-4 py-6 text-center cursor-pointer transition-all duration-300 hover:border-forest-500 hover:bg-forest-50/50">
+                                <span class="material-symbols-outlined text-ink-muted/50 block mb-1" style="font-size:28px">add_photo_alternate</span>
+                                <p class="text-xs text-ink-muted">点击或拖拽上传参考图片（PNG / JPG，不超过 5MB）</p>
+                                <input type="file" id="refFile" accept="image/*" class="hidden" />
+                            </div>
+                            <div id="refUploaded" class="hidden items-center gap-4 bg-forest-100/60 px-4 py-3 mt-3">
+                                <img id="refThumb" src="" alt="参考图缩略" class="w-12 h-12 object-cover border border-sand-200" />
+                                <div class="flex-1 min-w-0">
+                                    <p class="text-sm text-ink truncate" id="refFileName"></p>
+                                    <p class="text-xs text-ink-muted font-mono truncate" id="refFileId"></p>
+                                </div>
+                                <button type="button" id="refRemove" class="text-xs tracking-widest uppercase text-clay-600 hover:text-clay-700 transition-colors">移除</button>
+                            </div>
+                            <p id="refUploading" class="hidden text-xs text-forest-700 mt-2">参考图上传中...</p>
+                        </div>
+
+                        <!-- 高级选项 -->
+                        <div class="mt-6 border border-sand-200 overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]" id="advancedContainer">
+                            <button type="button" class="w-full flex items-center justify-between p-4 hover:bg-sand-100 transition-colors" id="advancedToggle">
+                                <div class="flex items-center gap-2 text-ink-muted">
+                                    <span class="material-symbols-outlined text-[18px]">settings</span>
+                                    <span class="section-label">高级选项</span>
+                                </div>
+                                <span class="material-symbols-outlined text-ink-muted transition-transform duration-300" id="advancedIcon">expand_more</span>
+                            </button>
+                            <div class="h-0 opacity-0 overflow-hidden bg-sand-50 px-6 py-0 flex flex-col gap-8 transition-all duration-500" id="advancedContent">
+                                <div class="flex flex-col gap-3">
+                                    <span class="section-label">Fragrance Type · 香调</span>
+                                    <div class="flex flex-wrap gap-2" id="fragranceTags">
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Woody">Woody · 木质</button>
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Floral">Floral · 花香</button>
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Marine">Marine · 海洋</button>
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Oriental">Oriental · 东方</button>
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Fruity">Fruity · 果香</button>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col gap-3">
+                                    <span class="section-label">Mood · 氛围</span>
+                                    <div class="flex flex-wrap gap-2" id="moodTags">
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Serene">Serene · 静谧</button>
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Vibrant">Vibrant · 活力</button>
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Mysterious">Mysterious · 神秘</button>
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Romantic">Romantic · 浪漫</button>
+                                        <button type="button" class="tag-btn px-4 py-1.5 border border-sand-300 text-xs text-ink-light hover:border-forest-500 transition-colors" data-value="Power">Power · 气场</button>
+                                    </div>
+                                </div>
+                                <div class="flex flex-col gap-3 pb-6">
+                                    <span class="section-label">Visual Style · 视觉风格</span>
+                                    <div class="grid grid-cols-2 md:grid-cols-3 gap-3" id="styleSelect">
+                                        <button type="button" class="style-btn px-4 py-3 border border-sand-300 bg-sand-50 text-xs text-ink-light hover:border-forest-500 hover:text-forest-700 transition-all text-left flex items-center justify-between group" data-value="Minimalist Luxury">
+                                            <span>Minimalist Luxury · 极简奢华</span>
+                                            <span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 text-forest-600 transition-opacity">check</span>
+                                        </button>
+                                        <button type="button" class="style-btn px-4 py-3 border border-sand-300 bg-sand-50 text-xs text-ink-light hover:border-forest-500 hover:text-forest-700 transition-all text-left flex items-center justify-between group" data-value="Nature Aesthetic">
+                                            <span>Nature Aesthetic · 自然美学</span>
+                                            <span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 text-forest-600 transition-opacity">check</span>
+                                        </button>
+                                        <button type="button" class="style-btn px-4 py-3 border border-sand-300 bg-sand-50 text-xs text-ink-light hover:border-forest-500 hover:text-forest-700 transition-all text-left flex items-center justify-between group" data-value="Oriental Zen">
+                                            <span>Oriental Zen · 东方禅意</span>
+                                            <span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 text-forest-600 transition-opacity">check</span>
+                                        </button>
+                                        <button type="button" class="style-btn px-4 py-3 border border-sand-300 bg-sand-50 text-xs text-ink-light hover:border-forest-500 hover:text-forest-700 transition-all text-left flex items-center justify-between group" data-value="Art Deco">
+                                            <span>Art Deco · 装饰艺术</span>
+                                            <span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 text-forest-600 transition-opacity">check</span>
+                                        </button>
+                                        <button type="button" class="style-btn px-4 py-3 border border-sand-300 bg-sand-50 text-xs text-ink-light hover:border-forest-500 hover:text-forest-700 transition-all text-left flex items-center justify-between group" data-value="Vintage">
+                                            <span>Vintage · 复古经典</span>
+                                            <span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 text-forest-600 transition-opacity">check</span>
+                                        </button>
+                                        <button type="button" class="style-btn px-4 py-3 border border-sand-300 bg-sand-50 text-xs text-ink-light hover:border-forest-500 hover:text-forest-700 transition-all text-left flex items-center justify-between group" data-value="Future Tech">
+                                            <span>Future Tech · 未来科技</span>
+                                            <span class="material-symbols-outlined text-[16px] opacity-0 group-hover:opacity-100 text-forest-600 transition-opacity">check</span>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-col sm:flex-row items-center gap-3 mt-8">
+                            <button type="submit" id="generateBtn" class="btn-primary">
+                                <span class="material-symbols-outlined text-[16px]" id="btnIcon">auto_awesome</span>
+                                <span id="btnText">开始构思</span>
+                            </button>
+                            <button type="button" id="useInspirationBtn" class="btn-ghost">
+                                <span class="material-symbols-outlined text-[16px]">flare</span>
+                                <span>套用精选灵感</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+                <!-- 结果区 -->
+                <div class="min-h-[600px] flex flex-col items-center justify-start relative" id="resultSection">
+
+                    <!-- 初始空状态 -->
+                    <div class="flex flex-col items-center justify-center py-20 opacity-60 transition-opacity duration-500" id="initialState">
+                        <span class="material-symbols-outlined text-[48px] text-ink-muted/40 mb-4">image</span>
+                        <p class="font-serif text-lg italic text-ink-muted">生成的概念将在此展示</p>
+                    </div>
+
+                    <!-- 加载中状态 -->
+                    <div class="hidden relative w-full flex flex-col items-center justify-start py-12 transition-opacity duration-500 opacity-0 overflow-y-auto" id="loadingState">
+                        <div class="flex items-center gap-4 mb-6">
+                            <div class="w-2 h-2 rounded-full bg-forest-600 animate-ping"></div>
+                            <span class="section-label text-forest-700" id="loadingPhaseText">Processing Vision...</span>
+                        </div>
+                        <p class="text-xs text-ink-muted mb-12" id="loadingPhaseSubtext">正在解析香水概念与视觉参数</p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 w-full max-w-[1000px]">
+                            <div class="aspect-[3/4] border border-sand-200 bg-sand-100 relative overflow-hidden">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-sand-200/40 to-transparent shimmer-anim"></div>
+                            </div>
+                            <div class="aspect-[3/4] border border-sand-200 bg-sand-100 relative overflow-hidden hidden md:block">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-sand-200/40 to-transparent shimmer-anim shimmer-delay-1"></div>
+                            </div>
+                            <div class="aspect-[3/4] border border-sand-200 bg-sand-100 relative overflow-hidden hidden md:block">
+                                <div class="absolute inset-0 bg-gradient-to-r from-transparent via-sand-200/40 to-transparent shimmer-anim shimmer-delay-2"></div>
+                            </div>
+                        </div>
+
+                        <!-- 进度条 -->
+                        <div class="w-full max-w-[600px] mx-auto mb-8" id="progressBarSection" style="display:none;">
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-sm text-ink" id="progressLabel">⏳ 正在准备...</span>
+                                <span class="text-xs text-ink-muted" id="progressCount">0 / 5</span>
+                            </div>
+                            <div class="w-full h-2 bg-sand-200 rounded-full overflow-hidden">
+                                <div class="h-full bg-forest-600 rounded-full transition-all duration-500" id="progressBar" style="width: 0%;"></div>
+                            </div>
+                            <p class="text-xs text-ink-muted mt-2" id="progressSubtext">AI 正在理解你的灵感...</p>
+                        </div>
+
+                        </div>
+
+                    <!-- 结果网格 -->
+                    <div class="hidden w-full transition-opacity duration-700 opacity-0" id="resultGrid">
+                        <div class="flex items-end justify-between w-full mb-12 border-b border-sand-200 pb-6">
+                            <div>
+                                <h3 class="heading-serif text-3xl mb-2" id="resultConceptTitle">Concept · 香水概念</h3>
+                                <p class="text-xs text-ink-muted font-mono" id="resultConceptMeta">生成时间: -</p>
+                            </div>
+                            <div class="flex gap-3">
+                                <button type="button" class="btn-ghost" id="downloadBrochureBtn" disabled>
+                                    <span class="material-symbols-outlined text-[16px]">download</span>
+                                    <span id="downloadBrochureBtnText">下载档案</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- 工作流原始错误详情 -->
+                        <div class="w-full mb-12" id="rawErrorContainer" style="display:none;">
+                            <div class="bg-clay-100 border border-clay-300 p-6">
+                                <h4 class="section-label mb-3 flex items-center gap-2">
+                                    <span class="material-symbols-outlined text-[16px]">error</span>
+                                    工作流返回详情（预期错误，证明 API 对接正常）
+                                </h4>
+                                <pre class="text-clay-700 text-sm font-mono whitespace-pre-wrap break-all max-h-[200px] overflow-y-auto" id="rawErrorContent"></pre>
+                                <a href="#" target="_blank" rel="noopener" id="rawErrorDebugLink" class="inline-block mt-3 text-forest-700 underline text-sm" style="display:none;">查看 Coze 执行轨迹 →</a>
+                            </div>
+                        </div>
+
+                        <!-- 图片网格 -->
+                        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6 md:gap-8" id="imagesContainer">
+                            <div class="group relative cursor-pointer" data-image-role>
+                                <div class="aspect-[3/4] overflow-hidden border border-sand-200 relative">
+                                    <div class="absolute inset-0 bg-ink/0 group-hover:bg-ink/10 transition-colors duration-500 z-10 pointer-events-none"></div>
+                                    <div class="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-[1.03]" data-bg></div>
+                                    <div class="absolute bottom-4 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                                        <span class="material-symbols-outlined text-forest-700 bg-sand-50/80 rounded-full p-2">zoom_in</span>
+                                    </div>
+                                </div>
+                                <div class="mt-4 flex flex-col items-center">
+                                    <span class="font-serif text-lg text-ink-muted" data-label>视图</span>
+                                    <span class="w-6 h-px bg-sand-300 mt-2"></span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 自定义占位（点击任务卡片但任务未完成时显示） -->
+                    <div class="hidden flex flex-col items-center justify-center py-20 opacity-70 transition-opacity duration-500" id="taskPlaceholderState">
+                        <span class="material-symbols-outlined text-[48px] text-ink-muted/40 mb-4">hourglass_empty</span>
+                        <p class="font-serif text-lg italic text-ink-muted" id="taskPlaceholderText">该任务尚未完成</p>
+                    </div>
+
+                    <!-- 错误信息 -->
+                    <div class="error-message absolute inset-0 flex flex-col items-center justify-center transition-opacity duration-500" id="errorState" style="display:none; opacity:0;">
+                        <div class="bg-clay-100 border-2 border-clay-400 p-8 text-center max-w-[600px]">
+                            <span class="material-symbols-outlined text-[56px] text-clay-600 block mb-4">error</span>
+                            <h3 class="heading-serif text-2xl mb-2">生成遇到问题</h3>
+                            <p class="text-sm text-ink-muted leading-relaxed mb-4" id="errorText"></p>
+                            <p class="text-xs text-ink-muted">尝试调整描述后重试，或增加更多感官描写</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ============ Footer（在中间栏内） ============ -->
+            <footer class="bg-forest-900 text-sand-100 py-16 mt-16">
+                <div class="max-w-7xl mx-auto px-6 md:px-10">
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+                        <div>
+                            <h3 class="font-serif text-2xl mb-4 text-sand-50">
+                                Parfum<span class="italic font-light"> · Studio</span>
+                            </h3>
+                            <p class="text-sm text-sand-200/70 leading-relaxed">一个 AI 驱动的嗅觉工坊。从语言、记忆与想象中构思香氛概念。</p>
+                        </div>
+                        <div>
+                            <p class="text-xs tracking-widest uppercase text-sand-200/50 mb-4">探索</p>
+                            <ul class="space-y-2">
+                                <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">工坊</a></li>
+                                <li><a href="tasks.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
+                                <li><a href="history.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">历史记录</a></li>
+                                <li><a href="about.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">关于</a></li>
+                            </ul>
+                        </div>
+                        <div>
+                            <p class="text-xs tracking-widest uppercase text-sand-200/50 mb-4">工坊</p>
+                            <p class="text-sm text-sand-200/70 leading-relaxed whitespace-pre-line">于数字工坊中构思。
+        由 Coze 工作流驱动。</p>
+                        </div>
+                    </div>
+                    <div class="pt-8 border-t border-sand-200/15 flex flex-col md:flex-row justify-between items-center gap-4">
+                        <p class="text-xs text-sand-200/50 tracking-wide">© 2026 Parfum Studio. 所有香氛皆为想象。</p>
+                        <p class="text-xs text-sand-200/50 tracking-wide italic font-serif">"气味从来不只是气味。"</p>
+                    </div>
+                </div>
+            </footer>
+        </main>
+
+        <!-- ============ 右侧任务进度面板 (w-80) ============ -->
+        <aside class="sidebar-right hidden md:flex" id="taskProgressPanel">
+            <!-- 面板头部 -->
+            <div class="right-panel-header px-4 py-5 border-b border-sand-200">
+                <div class="flex items-center justify-between">
+                    <h3 class="text-sm font-medium text-ink flex items-center gap-2">
+                        <span class="material-symbols-outlined text-[18px] text-forest-700">monitoring</span>
+                        任务进度
+                    </h3>
+                    <div class="flex items-center gap-2">
+                        <button id="clearAllTasksBtn" class="text-xs text-clay-600 hover:text-clay-700 transition-colors flex items-center gap-1" title="清空全部任务">
+                            <span class="material-symbols-outlined text-[16px]">delete_sweep</span>
+                        </button>
+                        <span class="text-xs text-ink-muted font-mono" id="taskCount">0 个</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 任务卡片列表 -->
+            <div class="right-panel-body px-3 py-4" id="taskListContainer">
+                <!-- 空状态 -->
+                <div class="flex flex-col items-center justify-center py-16 opacity-60" id="taskEmptyState">
+                    <span class="material-symbols-outlined text-[36px] text-ink-muted/40 mb-3">inbox</span>
+                    <p class="text-sm text-ink-muted">暂无任务</p>
+                </div>
+                <!-- 任务卡片由 JS 动态渲染 -->
+                <div class="flex flex-col gap-3" id="taskCardsList"></div>
+            </div>
+        </aside>
+    </div>
+
+    <!-- ============ Modal 1 - 规范确认弹窗（替换旧 confirmModal） ============ -->
+    <div class="modal-overlay" id="specModal">
+        <div class="modal-content" style="position:relative;">
+            <h3 class="heading-serif text-2xl mb-2 text-ink">确认设计规范</h3>
+            <p class="text-sm text-ink-muted mb-4">AI 已解析你的灵感，请确认以下设计规范：</p>
+
+            <!-- 设计规范表单 -->
+            <div class="space-y-4 mb-5" id="specForm">
+                <!-- 由 JS 动态填充 -->
+            </div>
+
+            <!-- 参考图上传区域（状态驱动 UI） -->
+            <div class="mb-5 p-4 border border-dashed border-sand-300 rounded-lg" id="specRefUploadArea">
+                <p class="text-xs text-ink-muted mb-2">参考图（可选）</p>
+                <div id="specRefEmpty" class="flex items-center justify-between">
+                    <span class="text-xs text-ink-light">未上传参考图</span>
+                    <button type="button" class="text-xs tracking-widest uppercase text-forest-700 hover:text-forest-800 transition-colors" id="specRefUploadBtn">上传图片</button>
+                </div>
+                <div id="specRefUploading" class="hidden items-center gap-2">
+                    <span class="material-symbols-outlined text-forest-600 animate-spin text-sm">refresh</span>
+                    <span class="text-xs text-forest-700">上传中...</span>
+                </div>
+                <div id="specRefSuccess" class="hidden items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-forest-600 text-sm">check_circle</span>
+                        <span class="text-xs text-ink-light">参考图已上传</span>
+                        <span class="text-xs text-ink-muted font-mono" id="specRefFileIdDisplay"></span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button type="button" class="text-xs tracking-widest uppercase text-forest-700 hover:text-forest-800 transition-colors" id="specRefChangeBtn">更换</button>
+                        <button type="button" class="text-xs tracking-widest uppercase text-clay-600 hover:text-clay-700 transition-colors" id="specRefRemoveBtn">移除</button>
+                    </div>
+                </div>
+                <div id="specRefFailed" class="hidden items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-clay-600 text-sm">error</span>
+                        <span class="text-xs text-clay-700">上传失败</span>
+                        <span class="text-xs text-ink-muted" id="specRefErrorMsg"></span>
+                    </div>
+                    <button type="button" class="text-xs tracking-widest uppercase text-clay-600 hover:text-clay-700 transition-colors" id="specRefRetryBtn">重试</button>
+                </div>
+                <input type="file" id="specRefFileInput" accept="image/*" class="hidden" />
+            </div>
+
+            <div class="flex items-center gap-3">
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="specSubmitBtn">提交修改</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all hidden" id="specConfirmFinalBtn">确认无误，开始生成</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all hidden" id="specEditBackBtn">返回修改</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="specConfirmBtn">直接确认</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" onclick="window.closeSpecModal(true)">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 图片放大 Modal ============ -->
+    <div class="fixed inset-0 z-[100] bg-sand-50/95 backdrop-blur-xl hidden flex-col items-center justify-center opacity-0 transition-opacity duration-300 p-8" id="imageModal">
+        <button type="button" class="absolute top-8 right-8 w-12 h-12 rounded-full border border-sand-100/30 flex items-center justify-center text-sand-100 hover:bg-sand-100/10 transition-colors" onclick="closeModal()">
+            <span class="material-symbols-outlined text-[24px]">close</span>
+        </button>
+        <div class="w-full max-w-[800px] aspect-[3/4] md:aspect-auto md:h-[819px] bg-cover bg-center border border-sand-100/20" id="modalImage"></div>
+    </div>
+
+    <!-- ============ Modal 2 - 预览满意弹窗 ============ -->
+    <div class="modal-overlay" id="previewModal">
+        <div class="modal-content" style="position:relative;">
+            <button type="button" class="modal-close" onclick="window.closePreviewModal(true)">
+                <span class="material-symbols-outlined text-[20px]">close</span>
+            </button>
+            <h3 class="heading-serif text-2xl mb-4 text-ink">您对预览图满意吗？</h3>
+
+            <!-- 正常图片预览区 -->
+            <div id="previewImageSection" class="mb-5">
+                <img id="previewImage" src="" alt="预览图" class="w-full border border-sand-200" style="cursor:zoom-in;" ondblclick="window.openLargeImageModal(this.src)" />
+            </div>
+
+            <!-- 兜底：无图片时的错误提示区 -->
+            <div id="previewFallbackSection" class="mb-5 hidden">
+                <div class="p-6 bg-clay-50 border border-clay-200 rounded-lg text-center">
+                    <span class="material-symbols-outlined text-[48px] text-clay-500 block mb-3">broken_image</span>
+                    <p class="text-clay-800 font-medium mb-2">预览图生成失败</p>
+                    <p id="previewFallbackError" class="text-sm text-clay-600 mb-4"></p>
+                    <div class="text-xs text-clay-400 bg-clay-100/50 rounded px-3 py-2 inline-block">
+                        提示：请检查工作流配置或稍后重试
+                    </div>
+                </div>
+            </div>
+
+            <!-- 修改意见输入区（初始隐藏，点"不满意"后展开） -->
+            <div id="previewDetailSection" class="mb-4 hidden">
+                <label class="section-label block mb-1">修改意见</label>
+                <textarea id="previewDetailInput" class="w-full input-field" rows="3" placeholder="例如：背景再暗一点、瓶子放大 20%、瓶身改成深蓝色..."></textarea>
+                <div id="previewRegenLoading" class="hidden mt-2 text-sm text-ink-muted flex items-center gap-2">
+                    <span class="loading-spinner"></span> 重新生成中...
+                </div>
+            </div>
+
+            <!-- 正常模式按钮 -->
+            <div id="previewNormalButtons" class="flex items-center gap-3">
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="previewSatisfiedBtn">满意，继续生成多角度</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all hidden" id="previewSubmitDetailBtn">提交修改意见</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="previewRetryBtn">不满意，重新生成</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="previewBackBtn">返回上一步</button>
+            </div>
+
+            <!-- 兜底模式按钮 -->
+            <div id="previewFallbackButtons" class="hidden items-center gap-3">
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="previewFallbackRetryBtn">重试</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="previewFallbackExitBtn">退出</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-amber-500 text-amber-800 hover:bg-amber-50 transition-all" id="previewFallbackNextBtn">下一步（开发测试）</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ Modal 3 - 多角度满意弹窗 ============ -->
+    <div class="modal-overlay" id="multiModal">
+        <div class="modal-content" style="position:relative;">
+            <button type="button" class="modal-close" onclick="window.closeMultiModal(true)">
+                <span class="material-symbols-outlined text-[20px]">close</span>
+            </button>
+            <h3 class="heading-serif text-2xl mb-4 text-ink" id="multiModalTitle">多角度设计图已生成，是否满意？</h3>
+
+            <!-- 正常图片预览区 -->
+            <div id="multiImageSection" class="mb-5">
+                <div class="relative">
+                    <img id="multiImage" src="" alt="多角度图" class="w-full border border-sand-200" style="cursor:zoom-in;" ondblclick="window.openLargeImageModal(this.src)" />
+                    <button type="button" class="absolute top-2 right-2 bg-white/80 hover:bg-white rounded p-1.5 shadow-sm border border-sand-200" title="下载图片" onclick="window.downloadMultiImage()">
+                        <span class="material-symbols-outlined text-[18px] text-ink">download</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 兜底：无图片时的错误提示区 -->
+            <div id="multiFallbackSection" class="mb-5 hidden">
+                <div class="p-6 bg-clay-50 border border-clay-200 rounded-lg text-center">
+                    <span class="material-symbols-outlined text-[48px] text-clay-500 block mb-3">broken_image</span>
+                    <p class="text-clay-800 font-medium mb-2">多角度图生成失败</p>
+                    <p id="multiFallbackError" class="text-sm text-clay-600 mb-4"></p>
+                    <div class="text-xs text-clay-400 bg-clay-100/50 rounded px-3 py-2 inline-block">
+                        提示：请检查工作流配置或稍后重试
+                    </div>
+                </div>
+            </div>
+
+            <!-- 正常模式按钮 -->
+            <div id="multiNormalButtons" class="flex items-center gap-3">
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="multiConfirmBtn">满意，完成</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="multiRetryBtn">不满意，重新生成</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="multiBackBtn">返回上一步</button>
+            </div>
+
+            <!-- 兜底模式按钮 -->
+            <div id="multiFallbackButtons" class="hidden items-center gap-3">
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="multiFallbackRetryBtn">重试</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="multiFallbackExitBtn">退出</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-amber-500 text-amber-800 hover:bg-amber-50 transition-all" id="multiFallbackNextBtn">下一步（开发测试）</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 确认清空任务弹窗 ============ -->
+    <div class="modal-overlay" id="clearConfirmModal">
+        <div class="modal-content" style="position:relative;max-width:400px;">
+            <h3 class="heading-serif text-xl mb-2 text-ink">确认清空任务</h3>
+            <p class="text-sm text-ink-muted mb-6" id="clearConfirmMsg">确认清空全部任务吗？此操作不可撤销。</p>
+            <div class="flex justify-end gap-3">
+                <button type="button" class="px-5 py-2.5 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="clearConfirmCancelBtn">取消</button>
+                <button type="button" class="px-5 py-2.5 text-sm tracking-widest uppercase bg-clay-600 text-white hover:bg-clay-700 transition-all" id="clearConfirmOkBtn">确认清空</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // -----------------------------
+        // 更新账户显示
+        // -----------------------------
+        (function updateAccountLabel() {
+            try {
+                const s = JSON.parse(localStorage.getItem('pcs_user_session') || 'null');
+                const label = document.getElementById('accountLabel');
+                if (label) {
+                    label.textContent = (s && s.token) ? (s.username || s.email || '我的账户') : '登录';
+                }
+            } catch (_) {}
+        })();
+
+        // 灵感示例按钮
+        document.querySelectorAll('.example-prompt').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const prompt = btn.getAttribute('data-prompt');
+                const input = document.getElementById('promptInput');
+                if (prompt && input) {
+                    input.value = prompt;
+                    input.dispatchEvent(new Event('input'));
+                    input.focus();
+                }
+            });
+        });
+
+        // 页面加载后初始化
+        // DOMContentLoaded 由 script.js 处理（含 startTaskProgressPolling）
+    </script>
+    <script src="script.js"></script>
+    <script src="/page-transition.js"></script>
+    <div class="page-transition-overlay"><div class="pt-skeleton"><div class="skeleton-header"></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div></div></div>
+</body>
+</html>

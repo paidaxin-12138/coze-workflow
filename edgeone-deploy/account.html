@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>账号管理 · Parfum Studio</title>
+    <script>if(sessionStorage.getItem('pt'))document.documentElement.classList.add('pt')</script>
+    <link rel="icon" type="image/png" href="/images/perfume-logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link rel="stylesheet" href="/tailwind.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="parfum-studio">
+
+    <!-- ============ Navbar ============ -->
+    <header class="fixed top-0 left-0 right-0 z-50 transition-all duration-500" id="navbar" style="background: rgba(250, 248, 244, 0.95); backdrop-filter: blur(12px); box-shadow: 0 1px 0 0 rgba(42, 37, 32, 0.06);">
+        <nav class="max-w-7xl mx-auto px-6 md:px-10">
+            <div class="flex items-center justify-between h-20">
+                <a href="index.html" class="font-serif text-2xl tracking-wide text-ink hover:text-forest-700 transition-colors duration-300">
+                    Parfum<span class="italic font-light"> · Studio</span>
+                </a>
+                <div class="hidden md:flex items-center gap-10">
+                    <a href="studio.html" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">工坊</a>
+                    <a href="index.html#scent-families" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">香调</a>
+                    <a href="tasks.html" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">任务</a>
+                    <a href="history.html" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">收藏</a>
+                    <a href="about.html" class="text-sm tracking-widest uppercase text-ink-light hover:text-forest-700 transition-colors duration-300">关于</a>
+                    <div class="w-px h-5 bg-ink/15"></div>
+                    <a href="account.html" class="text-sm tracking-widest uppercase text-forest-700 transition-colors duration-300">账户</a>
+                </div>
+                <a href="account.html" class="md:hidden w-8 h-8 rounded-full bg-forest-700 flex items-center justify-center" aria-label="账号管理">
+                    <span class="material-symbols-outlined text-sand-50 text-[18px]">person</span>
+                </a>
+            </div>
+        </nav>
+    </header>
+
+    <!-- ============ 账号管理 ============ -->
+    <main class="min-h-screen pt-20 pb-24 bg-sand-50">
+        <div class="max-w-7xl mx-auto px-6 md:px-10 py-12">
+
+            <!-- 页面标题 -->
+            <div class="mb-12">
+                <p class="section-label mb-4">账户</p>
+                <h2 class="heading-serif text-4xl md:text-5xl mb-2">账号 <span class="italic">管理</span></h2>
+                <p class="text-ink-muted">管理您的设计师资料、密码和账户</p>
+            </div>
+
+            <!-- 未登录状态 -->
+            <div id="notLoggedIn" class="hidden bg-sand-100 border border-sand-200 p-12 text-center max-w-md mx-auto">
+                <span class="material-symbols-outlined text-[64px] text-ink-muted/30 block mb-4">lock</span>
+                <h3 class="heading-serif text-2xl text-ink mb-2">尚未登录</h3>
+                <p class="text-ink-muted mb-8">请先登录以管理您的账户</p>
+                <a href="login.html" class="btn-primary">立即登录</a>
+            </div>
+
+            <!-- 已登录内容 -->
+            <div id="loggedIn" class="hidden grid grid-cols-1 lg:grid-cols-3 gap-8">
+
+                <!-- 左侧：用户卡片 -->
+                <div class="lg:col-span-1">
+                    <div class="bg-sand-100 border border-sand-200 p-8 lg:sticky lg:top-32">
+                        <div class="flex flex-col items-center text-center">
+                            <div id="avatarBadge" class="w-20 h-20 rounded-full bg-forest-700 flex items-center justify-center text-sand-50 text-[36px] font-serif mb-4">
+                                <span id="avatarInitial">D</span>
+                            </div>
+                            <h3 id="userDisplayName" class="heading-serif text-2xl text-ink mb-1">加载中...</h3>
+                            <p id="userDesignerId" class="text-ink-muted text-sm mb-1">@designer_id</p>
+                            <p id="userEmail" class="text-ink-muted/70 text-sm">-</p>
+                            <p id="userCreatedAt" class="text-ink-muted/60 text-xs mt-3">加入时间: -</p>
+
+                            <!-- 生成次数统计 -->
+                            <div class="w-full mt-6 grid grid-cols-2 gap-3">
+                                <div class="bg-sand-50 border border-sand-200 py-3 px-2">
+                                    <div class="section-label mb-1">生成次数</div>
+                                    <div id="userGenCount" class="heading-serif text-2xl text-forest-700">-</div>
+                                </div>
+                                <div class="bg-sand-50 border border-sand-200 py-3 px-2">
+                                    <div class="section-label mb-1">上次生成</div>
+                                    <div id="userLastGen" class="text-xs text-ink-muted mt-2">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="border-t border-sand-200 mt-8 pt-6 space-y-3">
+                            <a id="adminEntry" href="admin.html" class="hidden w-full flex items-center justify-center gap-2 px-4 py-3 bg-forest-100 border border-forest-400 text-forest-700 hover:bg-forest-200 transition-all">
+                                <span class="material-symbols-outlined text-[18px]">admin_panel_settings</span>
+                                <span class="text-xs tracking-widest uppercase">管理后台</span>
+                            </a>
+                            <button id="logoutBtn" class="w-full flex items-center justify-center gap-2 px-4 py-3 border border-sand-300 text-ink-light hover:bg-sand-200 hover:text-forest-700 transition-all">
+                                <span class="material-symbols-outlined text-[18px]">logout</span>
+                                <span class="text-xs tracking-widest uppercase">退出登录</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 右侧：表单区域 -->
+                <div class="lg:col-span-2 space-y-6">
+
+                    <!-- 基本资料 -->
+                    <div class="bg-sand-100 border border-sand-200 p-8">
+                        <h3 class="heading-serif text-xl text-ink mb-6 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[20px] text-forest-700">edit</span> 基本资料
+                        </h3>
+                        <form id="profileForm" class="space-y-5">
+                            <div>
+                                <label class="section-label block mb-2">设计师 ID</label>
+                                <input id="designerIdInput" type="text" disabled class="w-full bg-sand-50 border border-sand-200 px-4 py-3 text-ink-muted/50 cursor-not-allowed" placeholder="不可修改">
+                                <p class="text-ink-muted/60 text-xs mt-1">设计师 ID 注册后不可更改</p>
+                            </div>
+                            <div>
+                                <label class="section-label block mb-2">显示名称</label>
+                                <input id="displayNameInput" type="text" maxlength="100" class="w-full bg-sand-50 border border-sand-200 focus:border-forest-500 px-4 py-3 text-ink outline-none transition-colors" placeholder="给自己取一个优雅的名字">
+                            </div>
+                            <div>
+                                <label class="section-label block mb-2">邮箱（可选）</label>
+                                <input id="emailInput" type="email" class="w-full bg-sand-50 border border-sand-200 focus:border-forest-500 px-4 py-3 text-ink outline-none transition-colors" placeholder="designer@example.com">
+                            </div>
+                            <div class="flex items-center gap-4 pt-2">
+                                <button type="submit" id="saveProfileBtn" class="btn-primary">保存修改</button>
+                                <span id="saveProfileMsg" class="text-sm hidden"></span>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- 修改密码 -->
+                    <div class="bg-sand-100 border border-sand-200 p-8">
+                        <h3 class="heading-serif text-xl text-ink mb-6 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[20px] text-forest-700">lock_open</span> 修改密码
+                        </h3>
+                        <form id="passwordForm" class="space-y-5">
+                            <div>
+                                <label class="section-label block mb-2">当前密码</label>
+                                <input id="currentPwInput" type="password" class="w-full bg-sand-50 border border-sand-200 focus:border-forest-500 px-4 py-3 text-ink outline-none transition-colors" placeholder="输入当前密码">
+                            </div>
+                            <div>
+                                <label class="section-label block mb-2">新密码</label>
+                                <input id="newPwInput" type="password" minlength="6" class="w-full bg-sand-50 border border-sand-200 focus:border-forest-500 px-4 py-3 text-ink outline-none transition-colors" placeholder="至少 6 位">
+                            </div>
+                            <div>
+                                <label class="section-label block mb-2">确认新密码</label>
+                                <input id="confirmPwInput" type="password" minlength="6" class="w-full bg-sand-50 border border-sand-200 focus:border-forest-500 px-4 py-3 text-ink outline-none transition-colors" placeholder="再次输入新密码">
+                            </div>
+                            <div class="flex items-center gap-4 pt-2">
+                                <button type="submit" id="changePwBtn" class="btn-primary">更新密码</button>
+                                <span id="changePwMsg" class="text-sm hidden"></span>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- 危险操作 -->
+                    <div class="bg-clay-50 border border-clay-300 p-8">
+                        <h3 class="heading-serif text-xl text-clay-700 mb-4 flex items-center gap-2">
+                            <span class="material-symbols-outlined text-[20px]">warning</span> 危险操作
+                        </h3>
+                        <p class="text-ink-muted mb-6">删除账号将永久移除您的设计师资料、历史记录和所有关联数据。此操作不可撤销。</p>
+                        <button id="deleteAccountBtn" class="inline-flex items-center gap-2 px-6 py-3 border border-clay-500 text-clay-700 text-xs tracking-widest uppercase hover:bg-clay-600 hover:text-sand-50 transition-all">
+                            <span class="material-symbols-outlined text-[16px]">delete_forever</span>
+                            删除账号
+                        </button>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- ============ Footer ============ -->
+    <footer class="bg-forest-900 text-sand-100 py-16">
+        <div class="max-w-7xl mx-auto px-6 md:px-10">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+                <div>
+                    <h3 class="font-serif text-2xl mb-4 text-sand-50">
+                        Parfum<span class="italic font-light"> · Studio</span>
+                    </h3>
+                    <p class="text-sm text-sand-200/70 leading-relaxed">一个 AI 驱动的嗅觉工坊。从语言、记忆与想象中构思香氛概念。</p>
+                </div>
+                <div>
+                    <p class="text-xs tracking-widest uppercase text-sand-200/50 mb-4">探索</p>
+                    <ul class="space-y-2">
+                        <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">工坊</a></li>
+                        <li><a href="index.html#scent-families" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">香调</a></li>
+                        <li><a href="tasks.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
+                        <li><a href="history.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">收藏</a></li>
+                        <li><a href="about.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">关于</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <p class="text-xs tracking-widest uppercase text-sand-200/50 mb-4">工坊</p>
+                    <p class="text-sm text-sand-200/70 leading-relaxed whitespace-pre-line">于数字工坊中构思。
+由 Coze 工作流驱动。</p>
+                </div>
+            </div>
+            <div class="pt-8 border-t border-sand-200/15 flex flex-col md:flex-row justify-between items-center gap-4">
+                <p class="text-xs text-sand-200/50 tracking-wide">© 2026 Parfum Studio. 所有香氛皆为想象。</p>
+                <p class="text-xs text-sand-200/50 tracking-wide italic font-serif">"气味从来不只是气味。"</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+    (function() {
+        const SESSION_KEY = 'pcs_user_session';
+        const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
+
+        function getToken() {
+            try {
+                const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+                return s && s.token ? s.token : null;
+            } catch (_) { return null; }
+        }
+
+        function getCurrentUser() {
+            try {
+                const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+                return s && s.user ? s.user : null;
+            } catch (_) { return null; }
+        }
+
+        function updateSessionUser(patch) {
+            try {
+                const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+                if (s && s.user) {
+                    s.user = { ...s.user, ...patch };
+                    localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+                }
+            } catch (_) {}
+        }
+
+        function showMsg(el, text, isError) {
+            el.textContent = text;
+            el.classList.remove('hidden', 'text-ink-muted', 'text-clay-600', 'text-forest-700');
+            el.classList.add(isError ? 'text-clay-600' : 'text-forest-700');
+        }
+
+        const token = getToken();
+        const notLoggedIn = document.getElementById('notLoggedIn');
+        const loggedIn = document.getElementById('loggedIn');
+
+        if (!token) {
+            notLoggedIn.classList.remove('hidden');
+            return;
+        }
+
+        loggedIn.classList.remove('hidden');
+        const localUser = getCurrentUser();
+
+        // 填充本地数据
+        if (localUser) {
+            document.getElementById('userDisplayName').textContent = localUser.display_name || localUser.designer_id || '设计师';
+            document.getElementById('userDesignerId').textContent = '@' + (localUser.designer_id || '-');
+            document.getElementById('userEmail').textContent = localUser.email || '未设置邮箱';
+            document.getElementById('avatarInitial').textContent = (localUser.display_name || localUser.designer_id || 'D').charAt(0).toUpperCase();
+            document.getElementById('designerIdInput').value = localUser.designer_id || '';
+            document.getElementById('displayNameInput').value = localUser.display_name || '';
+            document.getElementById('emailInput').value = localUser.email || '';
+            const gc = typeof localUser.gen_count === 'number' ? localUser.gen_count : 0;
+            document.getElementById('userGenCount').textContent = gc;
+            document.getElementById('userLastGen').textContent = localUser.last_gen_at
+                ? new Date(localUser.last_gen_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                : '暂无';
+        }
+
+        function renderUserStats(u) {
+            const gc = (u && typeof u.gen_count === 'number') ? u.gen_count : 0;
+            const lgEl = document.getElementById('userLastGen');
+            const gcEl = document.getElementById('userGenCount');
+            if (gcEl) gcEl.textContent = gc;
+            if (lgEl) {
+                lgEl.textContent = (u && u.last_gen_at)
+                    ? new Date(u.last_gen_at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : '暂无';
+            }
+        }
+
+        // 从后端拉取最新资料
+        fetch(`${API_BASE}/api/account`, { headers: { Authorization: `Bearer ${token}` } })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    const u = data.user;
+                    document.getElementById('userDisplayName').textContent = u.display_name || u.designer_id;
+                    document.getElementById('userDesignerId').textContent = '@' + u.designer_id;
+                    document.getElementById('userEmail').textContent = u.email || '未设置邮箱';
+                    document.getElementById('userCreatedAt').textContent = '加入时间: ' + (u.created_at ? new Date(u.created_at).toLocaleDateString('zh-CN') : '-');
+                    document.getElementById('avatarInitial').textContent = (u.display_name || u.designer_id).charAt(0).toUpperCase();
+                    document.getElementById('designerIdInput').value = u.designer_id;
+                    document.getElementById('displayNameInput').value = u.display_name || '';
+                    document.getElementById('emailInput').value = u.email || '';
+                    renderUserStats(u);
+                    // 管理员显示后台入口
+                    if (u.is_admin) {
+                        document.getElementById('adminEntry').classList.remove('hidden');
+                    }
+                    updateSessionUser(u);
+                }
+            })
+            .catch(err => console.warn('加载资料失败:', err));
+
+        // 保存资料
+        document.getElementById('profileForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const msg = document.getElementById('saveProfileMsg');
+            const btn = document.getElementById('saveProfileBtn');
+            btn.disabled = true;
+            msg.classList.remove('hidden', 'text-forest-700', 'text-clay-600');
+            msg.classList.add('text-ink-muted');
+            msg.textContent = '保存中...';
+
+            const display_name = document.getElementById('displayNameInput').value.trim();
+            const email = document.getElementById('emailInput').value.trim();
+
+            try {
+                const res = await fetch(`${API_BASE}/api/account`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ display_name, email })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMsg(msg, '✓ 资料已更新', false);
+                    document.getElementById('userDisplayName').textContent = data.user.display_name || data.user.designer_id;
+                    document.getElementById('userEmail').textContent = data.user.email || '未设置邮箱';
+                    updateSessionUser(data.user);
+                } else {
+                    showMsg(msg, data.error || '更新失败', true);
+                }
+            } catch (err) {
+                showMsg(msg, '网络错误，请重试', true);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // 修改密码
+        document.getElementById('passwordForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const msg = document.getElementById('changePwMsg');
+            const btn = document.getElementById('changePwBtn');
+            const current = document.getElementById('currentPwInput').value;
+            const next = document.getElementById('newPwInput').value;
+            const confirm = document.getElementById('confirmPwInput').value;
+
+            if (next !== confirm) {
+                showMsg(msg, '两次输入的新密码不一致', true);
+                return;
+            }
+            if (next.length < 6) {
+                showMsg(msg, '新密码至少 6 位', true);
+                return;
+            }
+
+            btn.disabled = true;
+            msg.classList.remove('hidden', 'text-forest-700', 'text-clay-600');
+            msg.classList.add('text-ink-muted');
+            msg.textContent = '更新中...';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/account/change-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify({ current_password: current, new_password: next })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    showMsg(msg, '✓ 密码修改成功', false);
+                    document.getElementById('passwordForm').reset();
+                } else {
+                    showMsg(msg, data.message || data.error || '修改失败', true);
+                }
+            } catch (err) {
+                showMsg(msg, '网络错误，请重试', true);
+            } finally {
+                btn.disabled = false;
+            }
+        });
+
+        // 退出登录
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            // 先等服务器删除会话再跳转，避免页面卸载中断请求（net::ERR_ABORTED）
+            try {
+                await fetch(`${API_BASE}/api/logout`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${token}` },
+                    keepalive: true
+                });
+            } catch (_) {}
+            localStorage.removeItem(SESSION_KEY);
+            window.location.href = 'index.html';
+        });
+
+        // 删除账号
+        document.getElementById('deleteAccountBtn').addEventListener('click', async () => {
+            if (!confirm('⚠️ 确认删除账号？\n\n这将永久删除您的设计师资料、历史记录和所有关联数据，且不可撤销。')) return;
+            const secondConfirm = prompt('请输入您的设计师 ID 以确认删除：', '');
+            if (!secondConfirm) return;
+            const user = getCurrentUser();
+            if (secondConfirm !== (user && user.designer_id)) {
+                alert('设计师 ID 不匹配，已取消删除');
+                return;
+            }
+            try {
+                const res = await fetch(`${API_BASE}/api/account`, {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (res.ok) {
+                    localStorage.removeItem(SESSION_KEY);
+                    alert('账号已删除，即将跳转首页');
+                    window.location.href = 'index.html';
+                } else {
+                    const data = await res.json();
+                    alert('删除失败：' + (data.message || data.error || '未知错误'));
+                }
+            } catch (err) {
+                alert('网络错误，请重试');
+            }
+        });
+    })();
+    </script>
+    <script src="/page-transition.js"></script>
+    <div class="page-transition-overlay"><div class="pt-skeleton"><div class="skeleton-header"></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div></div></div>
+</body>
+</html>

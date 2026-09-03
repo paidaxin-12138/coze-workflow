@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "exclude": [
+    "dev-server.js",
+    "db-cli.js",
+    ".env.example"
+  ],
+  "include": [
+    "/api/*"
+  ]
+}

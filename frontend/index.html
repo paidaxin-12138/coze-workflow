@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Parfum Studio · AI 嗅觉工坊</title>
+    <script>if(sessionStorage.getItem('pt'))document.documentElement.classList.add('pt')</script>
+    <link rel="icon" type="image/png" href="/images/perfume-logo.png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0" rel="stylesheet">
+    <link rel="stylesheet" href="/tailwind.css">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="parfum-studio">
+
+    <!-- ============ Hero ============ -->
+    <section id="hero" class="relative min-h-screen flex items-center justify-center overflow-hidden">
+        <div class="absolute inset-0">
+            <img src="/images/pexels-photo-12053219.jpg" alt="" class="w-full h-full object-cover opacity-40" />
+            <div class="absolute inset-0 bg-gradient-to-b from-sand-50/40 via-sand-50/60 to-sand-50"></div>
+            <div class="absolute inset-0 bg-ink/10"></div>
+        </div>
+        <div class="relative z-10 text-center px-6 max-w-3xl">
+            <p class="section-label mb-6" style="animation: fadeIn 0.8s ease-out 0.2s both;">AI 驱动的嗅觉工坊</p>
+            <h1 class="heading-serif text-5xl md:text-7xl mb-8" style="animation: fadeUp 0.8s ease-out 0.4s both;">
+                从一段思绪<br><span class="italic">构思一支香氛</span>
+            </h1>
+            <p class="text-ink-light text-lg md:text-xl font-light leading-relaxed max-w-xl mx-auto mb-12" style="animation: fadeUp 0.8s ease-out 0.6s both;">
+                描述一种情绪、一个地方、一段记忆。我们的工作流将语言转化为气味——编排香调、渲染概念图、撰写档案。
+            </p>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4" style="animation: fadeUp 0.8s ease-out 0.8s both;">
+                <a href="login.html?redirect=studio.html" class="btn-primary">进入工坊并开始构思</a>
+            </div>
+        </div>
+        <div class="absolute bottom-10 left-1/2 -translate-x-1/2" style="animation: fadeIn 0.8s ease-out 1.2s both;">
+            <span class="material-symbols-outlined text-ink-muted/60 animate-bounce">arrow_downward</span>
+        </div>
+    </section>
+
+    <!-- ============ Footer ============ -->
+    <footer class="bg-forest-900 text-sand-100 py-16">
+        <div class="max-w-7xl mx-auto px-6 md:px-10">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
+                <div>
+                    <h3 class="font-serif text-2xl mb-4 text-sand-50">
+                        Parfum<span class="italic font-light"> · Studio</span>
+                    </h3>
+                    <p class="text-sm text-sand-200/70 leading-relaxed">一个 AI 驱动的嗅觉工坊。从语言、记忆与想象中构思香氛概念。</p>
+                </div>
+                <div>
+                    <p class="text-xs tracking-widest uppercase text-sand-200/50 mb-4">探索</p>
+                    <ul class="space-y-2">
+                        <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">工坊</a></li>
+                        <li><a href="tasks.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
+                        <li><a href="history.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">历史记录</a></li>
+                        <li><a href="about.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">关于</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <p class="text-xs tracking-widest uppercase text-sand-200/50 mb-4">工坊</p>
+                    <p class="text-sm text-sand-200/70 leading-relaxed whitespace-pre-line">于数字工坊中构思。
+由 Coze 工作流驱动。</p>
+                </div>
+            </div>
+            <div class="pt-8 border-t border-sand-200/15 flex flex-col md:flex-row justify-between items-center gap-4">
+                <p class="text-xs text-sand-200/50 tracking-wide">© 2026 Parfum Studio. 所有香氛皆为想象。</p>
+                <p class="text-xs text-sand-200/50 tracking-wide italic font-serif">"气味从来不只是气味。"</p>
+            </div>
+        </div>
+    </footer>
+
+
+    <script src="/page-transition.js"></script>
+    <div class="page-transition-overlay"><div class="pt-skeleton"><div class="skeleton-header"></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div><div class="skeleton-card"><div class="skeleton-line short"></div><div class="skeleton-line medium"></div><div class="skeleton-image"></div></div></div></div>
+</body>
+</html>

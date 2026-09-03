@@ -1,0 +1,123 @@
+// 认证路由 - 注册/登录/登出/账户管理 (Supabase 适配版)
+import { Router } from 'express';
+import bcrypt from 'bcryptjs';
+import db, {
+    createUser, getUserByDesignerId, getUserById,
+    createSession, deleteSession, shouldFirstUserBeAdmin, ensureRootAdmin,
+    supabase
+} from '../../db.js';
+import { requireAuth } from '../middleware/auth.js';
+
+const router = Router();
+
+function formatUser(user) {
+    return {
+        id: user.id, designer_id: user.designer_id,
+        display_name: user.display_name, email: user.email,
+        is_admin: !!user.is_admin, is_disabled: !!user.is_disabled,
+        gen_count: user.gen_count || 0, last_gen_at: user.last_gen_at || null,
+        created_at: user.created_at
+    };
+}
+
+// POST /api/register
+router.post('/register', async (req, res) => {
+    try {
+        const { designer_id, password, email, display_name } = req.body;
+        if (!designer_id || !password) return res.status(400).json({ error: '请提供 designer_id 和 password' });
+        if (designer_id.length < 3 || designer_id.length > 30)
+            return res.status(400).json({ error: 'designer_id 长度需在 3-30 之间' });
+        if (password.length < 6) return res.status(400).json({ error: '密码至少 6 位' });
+        const existing = await getUserByDesignerId(designer_id);
+        if (existing) return res.status(409).json({ error: '该 designer_id 已被注册' });
+
+        const shouldFirstBeAdmin = await shouldFirstUserBeAdmin();
+        const password_hash = await bcrypt.hash(password, 10);
+        const user = await createUser({ designer_id, password_hash, email, display_name });
+        if (shouldFirstBeAdmin && user) {
+            const { data: adminUser } = await supabase.from('users').update({ is_admin: 1 }).eq('id', user.id).select().single();
+            if (adminUser) Object.assign(user, adminUser);
+        }
+        await ensureRootAdmin();
+        const session = await createSession(user.id);
+        const freshUser = await getUserById(user.id);
+        return res.json({ success: true, token: session.token, user: formatUser(freshUser) });
+    } catch (e) {
+        console.error('注册失败:', e);
+        return res.status(500).json({ error: '注册失败' });
+    }
+});
+
+// POST /api/login
+router.post('/login', async (req, res) => {
+    try {
+        const { designer_id, password } = req.body;
+        if (!designer_id || !password) return res.status(400).json({ error: '请提供 designer_id 和 password' });
+        const user = await getUserByDesignerId(designer_id);
+        if (!user) return res.status(404).json({ error: `账号「${designer_id}」不存在，请先注册`, code: 'USER_NOT_FOUND' });
+        if (user.is_disabled) return res.status(403).json({ error: '该账号已被禁用，请联系管理员', code: 'ACCOUNT_DISABLED' });
+        if (!(await bcrypt.compare(password, user.password_hash)))
+            return res.status(401).json({ error: '密码错误，请重试', code: 'WRONG_PASSWORD' });
+        const session = await createSession(user.id);
+        return res.json({ success: true, token: session.token, user: formatUser(user) });
+    } catch (e) {
+        console.error('登录失败:', e);
+        return res.status(500).json({ error: '登录失败' });
+    }
+});
+
+// POST /api/logout
+router.post('/logout', requireAuth, async (req, res) => {
+    await deleteSession(req.token);
+    res.json({ success: true });
+});
+
+// GET /api/me
+router.get('/me', requireAuth, async (req, res) => {
+    const user = await getUserById(req.user.id);
+    if (!user) return res.status(401).json({ error: '账户不存在' });
+    res.json({ user: formatUser(user) });
+});
+
+// GET /api/account
+router.get('/account', requireAuth, async (req, res) => {
+    const user = await getUserById(req.user.id);
+    if (!user) return res.status(404).json({ error: '用户不存在' });
+    res.json({ success: true, user: formatUser(user) });
+});
+
+// PUT /api/account
+router.put('/account', requireAuth, async (req, res) => {
+    const { display_name, email } = req.body;
+    await supabase.from('users').update({ display_name: display_name || null, email: email || null }).eq('id', req.user.id);
+    const user = await getUserById(req.user.id);
+    res.json({ success: true, user: formatUser(user) });
+});
+
+// POST /api/account/change-password
+router.post('/account/change-password', requireAuth, async (req, res) => {
+    const { current_password, new_password } = req.body;
+    if (!current_password || !new_password) return res.status(400).json({ error: '请提供当前密码和新密码' });
+    if (new_password.length < 6) return res.status(400).json({ error: '新密码至少 6 位' });
+    const user = await getUserById(req.user.id);
+    if (!(await bcrypt.compare(current_password, user.password_hash)))
+        return res.status(401).json({ error: '当前密码错误' });
+    const password_hash = await bcrypt.hash(new_password, 10);
+    await supabase.from('users').update({ password_hash }).eq('id', user.id);
+    await supabase.from('sessions').delete().eq('user_id', user.id);
+    res.json({ success: true, message: '密码修改成功，请重新登录' });
+});
+
+// DELETE /api/account
+router.delete('/account', requireAuth, async (req, res) => {
+    const { password } = req.body;
+    if (!password) return res.status(400).json({ error: '请输入密码以确认' });
+    const user = await getUserById(req.user.id);
+    if (!(await bcrypt.compare(password, user.password_hash)))
+        return res.status(401).json({ error: '密码错误' });
+    await supabase.from('sessions').delete().eq('user_id', user.id);
+    await supabase.from('users').delete().eq('id', user.id);
+    res.json({ success: true, message: '账号已删除' });
+});
+
+export default router;

@@ -1,0 +1,69 @@
+// 共享配置 - 从环境变量加载
+import { config as dotenvConfig } from 'dotenv';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// 在 index.js 导入之前抢先加载 .env.local，确保 config 读取时 env 已就绪
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+for (const f of ['.env.local', '.env']) {
+    const p = path.resolve(__dirname, '..', f);
+    if (fs.existsSync(p)) {
+        try {
+            dotenvConfig({ path: p, override: true });
+        } catch (_) {}
+    }
+}
+
+export const CONFIG = {
+    PORT: process.env.PORT || 3000,
+
+    // ===== 安全 CORS 白名单 =====
+    ALLOWED_ORIGINS: (process.env.ALLOWED_ORIGINS || '')
+        .split(',')
+        .map(o => o.trim())
+        .filter(o => o.length > 0),
+
+    // Coze 工作流配置
+    COZE_APP_ID: process.env.COZE_APP_ID,
+
+    // 三步工作流 ID
+    WF_SPEC_ID: process.env.WF_SPEC_ID || '',           // 规范生成工作流
+    WF_PREVIEW_ID: process.env.WF_PREVIEW_ID || '',     // 预览图生成工作流
+    WF_MULTI_ID: process.env.WF_MULTI_ID || '',         // 多角度生成工作流
+
+    // Coze 鉴权 Token（兼容旧变量名）
+    KM_COZE_TOKEN: process.env.KM_COZE_TOKEN || process.env.COZE_API_KEY || '',
+
+    // 并发任务数限制（可选）
+    KM_MAX_CONCURRENT: parseInt(process.env.KM_MAX_CONCURRENT || '3', 10),
+
+    // 速率限制配置（可选）
+    RATE_LIMIT: {
+        windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '60000', 10),
+        max: parseInt(process.env.RATE_LIMIT_MAX || '30', 10),
+    },
+
+    // 节点空闲超时（可选）
+    NODE_IDLE_TIMEOUT_MS: parseInt(process.env.NODE_IDLE_TIMEOUT_MS || '360000', 10),
+};
+
+// ===== 启动时强制校验必填变量 =====
+const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'KM_COZE_TOKEN'];
+for (const key of REQUIRED_ENV) {
+    if (process.env[key] === undefined || process.env[key] === null) {
+        console.error(`❌ 致命错误: 环境变量 ${key} 未设置，请检查 .env 文件`);
+        process.exit(1);
+    }
+}
+
+// 校验三步工作流 ID
+if (!CONFIG.WF_SPEC_ID || !CONFIG.WF_PREVIEW_ID || !CONFIG.WF_MULTI_ID) {
+    console.warn('⚠️ 警告: WF_SPEC_ID / WF_PREVIEW_ID / WF_MULTI_ID 未完全配置，对应工作流将不可用');
+}
+
+// 生产环境 ALLOWED_ORIGINS 非空警告
+if (process.env.NODE_ENV === 'production' && CONFIG.ALLOWED_ORIGINS.length === 0) {
+    console.warn('⚠️ 生产环境 ALLOWED_ORIGINS 未配置，所有跨域请求将被拒绝');
+}

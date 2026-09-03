@@ -1,0 +1,46 @@
+{
+  "name": "coze-workflow-app",
+  "version": "1.0.0",
+  "description": "Parfum Studio - AI 驱动的香水概念生成平台",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "dev-simple": "npx serve .",
+    "build:css": "tailwindcss -i ./src/input.css -o ./frontend/tailwind.css --minify",
+    "watch:css": "tailwindcss -i ./src/input.css -o ./frontend/tailwind.css --watch",
+    "build": "npm run build:css",
+    "start": "node index.js",
+    "db": "echo '⚠️  db-cli.js 仅适用于本地 SQLite 开发，生产环境请使用 Supabase' && node db-cli.js"
+  },
+  "keywords": [
+    "coze",
+    "workflow",
+    "perfume",
+    "ai",
+    "express"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "dependencies": {
+    "@upstash/redis": "1.35.0",
+    "@vercel/blob": "0.15.1",
+    "bcryptjs": "3.0.3",
+    "better-sqlite3": "13.0.3",
+    "cors": "2.8.5",
+    "dotenv": "17.4.2",
+    "express": "5.1.0",
+    "file-type": "22.0.2",
+    "helmet": "8.3.0",
+    "pino": "10.3.1",
+    "pino-http": "11.0.0",
+    "pino-pretty": "13.1.3"
+  },
+  "devDependencies": {
+    "serve": "14.2.1",
+    "tailwindcss": "3.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
