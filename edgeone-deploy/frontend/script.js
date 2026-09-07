@@ -2047,10 +2047,16 @@ function selectTask(taskId) {
         }
     } else if (task.status === 'multi_ready') {
         if (placeholder) placeholder.style.display = 'none';
-        if (initialState) {
-            initialState.style.display = 'flex';
-            placeholderText.textContent = '多角度图已生成，请进行最终确认';
-            placeholder.style.display = 'flex';
+        if (window.displayResults) {
+            const images = [task.previewUrl, task.multiUrl].filter(Boolean);
+            window.displayResults({
+                success: true,
+                images,
+                image_url: task.previewUrl || '',
+                message: '多角度图已生成',
+                jobId: taskId,
+                infoJson: { timestamp: new Date().toISOString() }
+            });
         }
     } else if (task.status === 'failed' || task.status === 'no_response') {
         if (placeholder) {
@@ -2063,6 +2069,23 @@ function selectTask(taskId) {
             placeholder.style.display = 'flex';
         }
     }
+}
+
+// 从 task.result 中提取图片 URL（支持路径如 'preview.image_url'，result 可能是 JSON 字符串或对象）
+function extractUrlFromResult(result, path) {
+    if (!result) return null;
+    let obj = result;
+    if (typeof result === 'string') {
+        try { obj = JSON.parse(result); } catch (_) { return null; }
+    }
+    if (typeof obj !== 'object' || obj === null) return null;
+    const parts = path.split('.');
+    let current = obj;
+    for (const part of parts) {
+        if (!current || typeof current !== 'object') return null;
+        current = current[part];
+    }
+    return (typeof current === 'string' && current.trim()) ? current.trim() : null;
 }
 
 // 定期从后端同步 tasksMap（解决多标签页/多人操作导致的状态不一致）
@@ -2079,13 +2102,23 @@ async function syncTasksFromBackend() {
         const data = await res.json();
         if (!data.success || !Array.isArray(data.tasks)) return;
 
+        // 同步后端数据到本地 tasksMap
         let changed = false;
         for (const serverTask of data.tasks) {
             const localTask = tasksMap.get(serverTask.id);
-            // 统一转换时间字段为数字（后端返回 ISO 字符串）
-            const serverCreated = serverTask.createdAt ? new Date(serverTask.createdAt).getTime() : Date.now();
-            const serverUpdated = serverTask.updatedAt ? new Date(serverTask.updatedAt).getTime() : Date.now();
-            const serverStatusChanged = serverTask.statusChangedAt ? new Date(serverTask.statusChangedAt).getTime() : Date.now();
+            // 统一转换时间字段为数字（后端返回 ISO 字符串 YYYY-MM-DD HH:MM:SS，SQLite datetime('now') 是 UTC）
+            // SQLite datetime('now') 返回 UTC，但 new Date() 会将 "YYYY-MM-DD HH:MM:SS" 解析为本地时区
+            // 需要手动修正：添加时区偏移，使实际时间与 UTC 一致
+            function convertSqliteTime(isoStr) {
+                if (!isoStr) return Date.now();
+                // YYYY-MM-DD HH:MM:SS → 替换为 T 加上 Z 表示 UTC
+                const utcStr = isoStr.replace(' ', 'T') + 'Z';
+                const ts = new Date(utcStr).getTime();
+                return isNaN(ts) ? new Date(isoStr).getTime() : ts;
+            }
+            const serverCreated = convertSqliteTime(serverTask.createdAt);
+            const serverUpdated = convertSqliteTime(serverTask.updatedAt);
+            const serverStatusChanged = convertSqliteTime(serverTask.statusChangedAt);
             const normalizedTask = {
                 ...serverTask,
                 // 保留前端独有字段（后端不包含这些字段，同步时不会被覆盖）
@@ -2093,20 +2126,23 @@ async function syncTasksFromBackend() {
                 prompt: localTask?.prompt || serverTask.params?.user_input || '',
                 spec: localTask?.spec || serverTask.spec || null,
                 previewPrompt: localTask?.previewPrompt || '',
-                previewUrl: localTask?.previewUrl || '',
+                // 从后端 task.result 中提取图片 URL（页面刷新后 localTask 不存在时使用）
+                previewUrl: localTask?.previewUrl || extractUrlFromResult(serverTask.result, 'preview.image_url') || '',
                 previewFileId: localTask?.previewFileId || '',
-                multiUrl: localTask?.multiUrl || '',
+                multiUrl: localTask?.multiUrl || extractUrlFromResult(serverTask.result, 'multi.image_url') || '',
                 refFileId: localTask?.refFileId || '',
                 taskId: serverTask.id,
                 createdAt: serverCreated,
                 updatedAt: serverUpdated,
                 statusChangedAt: serverStatusChanged,
             };
+            // 如果本地不存在，或者后端状态更新时间比本地新，更新本地
             if (!localTask || serverUpdated > (localTask.updatedAt || 0)) {
                 tasksMap.set(serverTask.id, normalizedTask);
                 changed = true;
             }
         }
+        // 删除本地存在但后端不存在的任务（已被删除）
         for (const [taskId] of tasksMap) {
             const exists = data.tasks.some(t => t.id === taskId);
             if (!exists) {
@@ -2115,11 +2151,13 @@ async function syncTasksFromBackend() {
             }
         }
 
+        // 如果有变化，重新渲染并保存到 localStorage
         if (changed) {
             renderTaskProgress();
             saveTasksToStorage();
         }
     } catch (e) {
+        // 同步失败不影响本地，静默失败
         console.warn('[syncTasksFromBackend] 同步失败:', e.message);
     }
 }
@@ -2132,7 +2170,9 @@ function startTaskProgressPolling() {
     let timer = setInterval(() => {
         renderTaskProgress();
         syncTasksFromBackend();
+        // 检查是否有活跃任务（非终态）
         const hasActiveTasks = Array.from(tasksMap.values()).some(t => !TERMINAL_STATES.includes(t.status));
+        // 根据是否存在活跃任务动态调整轮询间隔
         if (hasActiveTasks && pollingInterval !== 5000) {
             clearInterval(timer);
             pollingInterval = 5000;
@@ -2149,6 +2189,7 @@ function startTaskProgressPolling() {
         if (document.hidden) {
             clearInterval(timer);
         } else {
+            // 页面重新可见时立即同步一次后端数据
             syncTasksFromBackend();
             pollingInterval = Array.from(tasksMap.values()).some(t => !TERMINAL_STATES.includes(t.status)) ? 5000 : 30000;
             timer = setInterval(renderTaskProgress, pollingInterval);

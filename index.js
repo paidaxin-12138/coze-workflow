@@ -2,7 +2,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execSync } from 'node:child_process';
 import { config as dotenvConfig } from 'dotenv';
+
+// 设置终端编码为 UTF-8，解决中文乱码（需在同一个控制台执行才生效）
+try { execSync('cmd /c chcp 65001', { stdio: 'inherit' }); } catch (_) {}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,7 +15,7 @@ const __dirname = path.dirname(__filename);
 for (const f of ['.env.local', '.env']) {
     const p = path.resolve(__dirname, f);
     if (fs.existsSync(p)) {
-        try { dotenvConfig({ path: p, override: true }); console.log(`[env] 已加载 ${f}`); } catch (e) { console.warn(`[env] 加载 ${f} 失败:`, e.message); }
+        try { dotenvConfig({ path: p, override: true }); if (process.env.NODE_ENV !== 'production') console.log(`[env] 已加载 ${f}`); } catch (e) { console.warn(`[env] 加载 ${f} 失败:`, e.message); }
     }
 }
 
@@ -149,9 +153,9 @@ const corsOptions = {
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     origin: function (origin, callback) {
-        // 允许无 origin 的请求（如 Postman、服务器间调用）
+        // 1. 允许无 origin 的请求（如 Postman、服务器间调用）
         if (!origin) return callback(null, true);
-        // 开发环境允许 localhost
+        // 2. 开发环境允许 localhost
         if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
             return callback(null, true);
         }
@@ -172,12 +176,44 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 
-// 启用 Helmet 安全头（包含 CSP 策略）
+// ===== Nonce 生成中间件（在 Helmet 之前） =====
+app.use((req, res, next) => {
+    res.locals.nonce = crypto.randomBytes(16).toString('base64');
+    next();
+});
+
+// 非 HTML 静态文件（css, js, png 等由 express.static 直接处理）
+app.use(express.static(path.join(__dirname, 'frontend'), { extensions: ['html'], index: false }));
+// 上传图片静态文件服务
+app.use('/uploads', express.static(path.join(__dirname, 'public/uploads')));
+
+// 带 nonce 注入的 HTML 页面路由
+const htmlDir = path.join(__dirname, 'frontend');
+function serveHtml(htmlFile) {
+    return (req, res) => {
+        const filePath = path.join(htmlDir, htmlFile);
+        if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
+        let html = fs.readFileSync(filePath, 'utf-8');
+        // 在所有 <script> 标签中注入 nonce（排除已有 nonce 的标签）
+        html = html.replace(/<script(?![^>]*nonce)(\s)/g, `<script nonce="${res.locals.nonce}"$1`);
+        // 在所有 <link rel="preload" as="script"> 标签中注入 nonce
+        html = html.replace(/<link(?![^>]*nonce)([^>]*rel=["']preload["'][^>]*as=["']script["'][^>]*)>/g, `<link nonce="${res.locals.nonce}"$1>`);
+        res.type('html').send(html);
+    };
+}
+
+// 启用 Helmet 安全头（包含 CSP 策略，使用 nonce 替代 unsafe-inline/unsafe-eval）
 app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", "https://cdnjs.cloudflare.com"],
+            scriptSrc: [
+                "'self'",
+                (req, res) => `'nonce-${res.locals.nonce}'`,
+                "https://cdnjs.cloudflare.com",
+                "https://lf3-static.bytednsdoc.com",
+                "https://lf9-static.bytednsdoc.com",
+            ],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:", "https:", "blob:"],
             fontSrc: ["'self'", "https://fonts.gstatic.com", "https://cdnjs.cloudflare.com"],
@@ -186,6 +222,12 @@ app.use(helmet({
             objectSrc: ["'none'"],
             upgradeInsecureRequests: [],
         },
+    },
+    // 启用 HSTS（任务 7）
+    hsts: {
+        maxAge: 31536000,
+        includeSubDomains: true,
+        preload: true,
     },
 }));
 
@@ -311,9 +353,18 @@ if (!redisAvailable) {
     }, 5 * 60 * 1000); // 5 分钟
 }
 
-// 静态文件
-app.use(express.static(path.join(__dirname, 'frontend'), { extensions: ['html'] }));
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'frontend', 'index.html')));
+// HTML 页面路由（带 nonce 注入）
+app.get('/', serveHtml('index.html'));
+app.get('/index.html', serveHtml('index.html'));
+app.get('/studio.html', serveHtml('studio.html'));
+app.get('/copy.html', serveHtml('copy.html'));
+app.get('/history.html', serveHtml('history.html'));
+app.get('/tasks.html', serveHtml('tasks.html'));
+app.get('/about.html', serveHtml('about.html'));
+app.get('/login.html', serveHtml('login.html'));
+app.get('/account.html', serveHtml('account.html'));
+app.get('/admin.html', serveHtml('admin.html'));
+app.get('/500.html', serveHtml('500.html'));
 
 // ===== 挂载路由 =====
 app.use('/api', authRoutes);
@@ -363,7 +414,7 @@ app.use((err, req, res, next) => {
     });
 });
 
-// 启动服务器
+// ===== 启动服务器
 let server = null;
 server = app.listen(PORT, () => {
     ensureRootAdmin();
@@ -375,6 +426,30 @@ server = app.listen(PORT, () => {
         logger.info({ specId: CONFIG.WF_SPEC_ID, previewId: CONFIG.WF_PREVIEW_ID, multiId: CONFIG.WF_MULTI_ID }, '[CONFIG] Workflow IDs');
     }
 });
+
+// 定时清理 7 天前的上传图片（每小时检查一次）
+const UPLOAD_DIR = path.join(__dirname, 'public/uploads');
+const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1小时
+const MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7天
+setInterval(() => {
+    if (!fs.existsSync(UPLOAD_DIR)) return;
+    const now = Date.now();
+    let deleted = 0;
+    try {
+        const files = fs.readdirSync(UPLOAD_DIR);
+        for (const file of files) {
+            const filePath = path.join(UPLOAD_DIR, file);
+            try {
+                const stats = fs.statSync(filePath);
+                if (now - stats.mtimeMs > MAX_AGE) {
+                    fs.unlinkSync(filePath);
+                    deleted++;
+                }
+            } catch (_) { /* 文件可能已被删除 */ }
+        }
+        if (deleted > 0) logger.info({ deleted }, '已清理过期上传图片');
+    } catch (_) { /* 目录不存在或无权访问 */ }
+}, CLEANUP_INTERVAL);
 
 // ===== 优雅关机 =====
 function gracefulShutdown(signal) {

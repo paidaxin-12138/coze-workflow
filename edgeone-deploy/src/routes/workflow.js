@@ -662,4 +662,105 @@ router.post('/image', requireAuth, (req, res, next) => {
     }
 });
 
+// ========== 仿香工作流 ==========
+
+/**
+ * 仿香生成
+ * POST /api/workflow/copy
+ * 输入：{ brand, name, ml }
+ * 输出：{ success: true, image_url: "..." }
+ */
+router.post('/copy', requireAuth, async (req, res) => {
+    try {
+        const { brand, name, ml } = req.body || {};
+        if (!brand || !String(brand).trim()) return res.status(400).json({ success: false, error: '缺少品牌' });
+        if (!name || !String(name).trim()) return res.status(400).json({ success: false, error: '缺少型号' });
+        if (!ml || !String(ml).trim()) return res.status(400).json({ success: false, error: '缺少毫升数' });
+
+        // 调用 Coze 仿香工作流
+        const parameters = {
+            input: String(brand).trim(),
+            name: String(name).trim(),
+            ml: String(ml).trim()
+        };
+        const data = await callCozeWorkflow(CONFIG.COPY_WORKFLOW_ID, parameters);
+        console.log(`[copy] 工作流ID: ${CONFIG.COPY_WORKFLOW_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.COPY_WORKFLOW_ID}`);
+        console.log('[copy] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
+
+        // 提取图片 URL
+        let imageUrl = '';
+        if (data && data.image_url) {
+            imageUrl = String(data.image_url).replace(/^`|`$/g, '');
+        }
+        if (!imageUrl && data && data.output) {
+            const urls = extractImageUrls(data.output);
+            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+        if (!imageUrl && typeof data === 'string') {
+            const urls = extractImageUrls(data);
+            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+
+        if (!imageUrl) {
+            console.error('[copy] 未找到图片 URL，data 结构:', JSON.stringify(data, null, 2)?.slice(0, 1000));
+            return res.json({ success: false, image_url: null, error: '仿香工作流未返回图片，请检查工作流配置或稍后重试' });
+        }
+
+        res.json({ success: true, image_url: imageUrl });
+    } catch (e) {
+        console.error('[copy]', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * 仿香微调
+ * POST /api/workflow/tweak
+ * 输入：{ image_url, detail }
+ * 输出：{ success: true, image_url: "..." }
+ */
+router.post('/tweak', requireAuth, async (req, res) => {
+    try {
+        const { image_url, detail } = req.body || {};
+        if (!image_url || !String(image_url).trim()) return res.status(400).json({ success: false, error: '缺少图片 URL' });
+        if (!detail || !String(detail).trim()) return res.status(400).json({ success: false, error: '缺少修改意见' });
+
+        // 清理 URL 中的反引号
+        const cleanUrl = String(image_url).replace(/^`|`$/g, '');
+
+        // 调用 Coze 微调工作流
+        const parameters = {
+            image: cleanUrl,
+            detail: String(detail).trim()
+        };
+        const data = await callCozeWorkflow(CONFIG.TWEAK_WORKFLOW_ID, parameters);
+        console.log(`[tweak] 工作流ID: ${CONFIG.TWEAK_WORKFLOW_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.TWEAK_WORKFLOW_ID}`);
+        console.log('[tweak] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
+
+        // 提取新的图片 URL
+        let imageUrl = '';
+        if (data && data.image_url) {
+            imageUrl = String(data.image_url).replace(/^`|`$/g, '');
+        }
+        if (!imageUrl && data && data.output) {
+            const urls = extractImageUrls(data.output);
+            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+        if (!imageUrl && typeof data === 'string') {
+            const urls = extractImageUrls(data);
+            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+
+        if (!imageUrl) {
+            console.error('[tweak] 未找到图片 URL，data 结构:', JSON.stringify(data, null, 2)?.slice(0, 1000));
+            return res.json({ success: false, image_url: null, error: '微调工作流未返回图片，请稍后重试' });
+        }
+
+        res.json({ success: true, image_url: imageUrl });
+    } catch (e) {
+        console.error('[tweak]', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
 export default router;

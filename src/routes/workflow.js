@@ -1,15 +1,53 @@
 // Kosy Mosy 设计任务中心 - 任务 CRUD + 三步工作流（非流式）
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
 import { Router, raw as rawBody } from 'express';
 import { CONFIG } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
-    createTask, getTaskById, listTasks, updateTask, deleteTask, clearTasks
+    createTask, getTaskById, listTasks, updateTask, deleteTask, clearTasks, countProcessingTasks
 } from '../../db.js';
 import { extractImageUrls } from '../coze/sse.js';
-import { uploadToCoze, callCozeFallback } from '../coze/client.js';
+import { uploadToCoze, callCozeFallback, getCozeFileUrl } from '../coze/client.js';
 import { fileTypeFromBuffer } from 'file-type';
+import sharp from 'sharp';
 
 const router = Router();
+
+// 非生产环境日志
+const devLog = (msg, ...args) => {
+    if (process.env.NODE_ENV !== 'production') console.log(msg, ...args);
+};
+
+// 用户每日上传计数（内存存储，定时清理）
+const uploadCountMap = new Map();
+setInterval(() => {
+    const now = Date.now();
+    for (const [key, { date }] of uploadCountMap) {
+        if (now - date > 86400000) uploadCountMap.delete(key);
+    }
+}, 60000); // 每分钟清理过期记录
+
+function checkUploadLimit(userId) {
+    const today = new Date().toDateString();
+    const key = `${userId}:${today}`;
+    const entry = uploadCountMap.get(key);
+    if (!entry) return 0;
+    return entry.count;
+}
+
+function incrementUploadCount(userId) {
+    const today = new Date().toDateString();
+    const key = `${userId}:${today}`;
+    const entry = uploadCountMap.get(key) || { count: 0, date: Date.now() };
+    entry.count++;
+    entry.date = Date.now();
+    uploadCountMap.set(key, entry);
+    return entry.count;
+}
 
 // ========== 任务 CRUD ==========
 
@@ -23,6 +61,13 @@ router.post('/', requireAuth, (req, res) => {
     const p = params || {};
     if (!p.user_input || !String(p.user_input).trim())
         return res.status(400).json({ success: false, error: '请输入设计概念描述' });
+
+    // 检查并发任务数
+    const processingCount = countProcessingTasks(req.user.id);
+    if (processingCount >= CONFIG.KM_MAX_CONCURRENT) {
+        return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
+    }
+
     const task = createTask(req.user.id, {
         name: String(name).trim(),
         params: { user_input: String(p.user_input).trim(), image_file_id: p.image_file_id || '' }
@@ -54,7 +99,7 @@ router.delete('/', requireAuth, (req, res) => {
         const count = clearTasks(req.user.id);
         res.json({ success: true, deletedCount: count });
     } catch (e) {
-        console.error('[DELETE /api/workflow] 清空任务失败:', e);
+        if (process.env.NODE_ENV !== 'production') console.error('[DELETE /api/workflow] 清空任务失败:', e);
         res.status(500).json({ success: false, error: '清空任务失败' });
     }
 });
@@ -65,7 +110,7 @@ router.delete('/clear', requireAuth, (req, res) => {
         const count = clearTasks(req.user.id);
         res.json({ success: true, deletedCount: count });
     } catch (e) {
-        console.error('[DELETE /api/workflow/clear] 清空任务失败:', e);
+        if (process.env.NODE_ENV !== 'production') console.error('[DELETE /api/workflow/clear] 清空任务失败:', e);
         res.status(500).json({ success: false, error: '清空任务失败' });
     }
 });
@@ -86,30 +131,30 @@ async function callCozeWorkflow(workflowId, parameters) {
     const txt = await res.text();
     let j = null;
     try { j = JSON.parse(txt); } catch (_) {
-        console.warn(`[callCozeWorkflow] 工作流ID: ${workflowId}, 响应非 JSON:`, txt.slice(0, 200));
+        if (process.env.NODE_ENV !== 'production') console.warn(`[callCozeWorkflow] 工作流ID: ${workflowId}, 响应非 JSON:`, txt.slice(0, 200));
     }
     if (!res.ok) {
-        const errMsg = (j && (j.msg || j.error_message)) || `HTTP ${res.status}`;
-        console.error(`[callCozeWorkflow] 工作流ID: ${workflowId}, 失败: ${errMsg}`);
-        throw new Error('工作流调用失败：' + errMsg);
+        const errMsg = (j && (j.msg || j.error_message)) || '工作流调用失败';
+        if (process.env.NODE_ENV !== 'production') console.error(`[callCozeWorkflow] 工作流ID: ${workflowId}, 失败: ${errMsg}`);
+        throw new Error(errMsg);
     }
     if (!j) {
-        console.error(`[callCozeWorkflow] 工作流ID: ${workflowId}, Coze 返回了非 JSON 响应`);
-        throw new Error('Coze 返回了非 JSON 响应');
+        if (process.env.NODE_ENV !== 'production') console.error(`[callCozeWorkflow] 工作流ID: ${workflowId}, Coze 返回了非 JSON 响应`);
+        throw new Error('服务响应异常，请稍后重试');
     }
     // Coze API 返回 HTTP 200 但业务 code 可能不为 0（工作流内部错误）
     // 例如：工作流执行超时、节点错误、参数错误等
     if (j.code !== undefined && j.code !== 0) {
-        const errMsg = j.msg || j.error_message || `业务错误码 ${j.code}`;
-        console.error(`[callCozeWorkflow] 工作流ID: ${workflowId}, Coze 业务错误: ${errMsg}`);
-        throw new Error(`工作流 ${workflowId} 返回错误：${errMsg}`);
+        const errMsg = j.msg || j.error_message || '工作流执行异常';
+        if (process.env.NODE_ENV !== 'production') console.error(`[callCozeWorkflow] 工作流ID: ${workflowId}, Coze 业务错误: ${errMsg}`);
+        throw new Error(errMsg);
     }
     // 解析 Coze 非流式响应
     // data 字段可能是字符串（需 JSON.parse）或对象
     let data = j.data;
     if (data === undefined || data === null) {
-        console.error(`[callCozeWorkflow] 工作流ID: ${workflowId}, 响应中 data 字段为空, 完整响应:`, JSON.stringify(j).slice(0, 500));
-        throw new Error(`工作流 ${workflowId} 返回数据为空，请检查工作流配置`);
+        if (process.env.NODE_ENV !== 'production') console.error(`[callCozeWorkflow] 工作流ID: ${workflowId}, 响应中 data 字段为空, 完整响应:`, JSON.stringify(j).slice(0, 500));
+        throw new Error('工作流返回数据为空，请检查工作流配置');
     }
     if (typeof data === 'string') {
         try { data = JSON.parse(data); } catch (_) {
@@ -136,6 +181,12 @@ router.post('/step/spec', requireAuth, async (req, res) => {
         if (!user_input || !String(user_input).trim())
             return res.status(400).json({ success: false, error: '缺少设计概念描述' });
 
+        // 检查并发任务数
+        const processingCount = countProcessingTasks(req.user.id);
+        if (processingCount >= CONFIG.KM_MAX_CONCURRENT) {
+            return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
+        }
+
         const task = getTaskById(req.user.id, task_id);
         if (!task) return res.status(404).json({ success: false, error: '任务不存在' });
 
@@ -145,8 +196,8 @@ router.post('/step/spec', requireAuth, async (req, res) => {
         // 调用 Coze 规范工作流 — 输入参数: input(string)
         const parameters = { input: String(user_input).trim() };
         const data = await callCozeWorkflow(CONFIG.WF_SPEC_ID, parameters);
-        console.log(`[step/spec] 工作流ID: ${CONFIG.WF_SPEC_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.WF_SPEC_ID}`);
-        console.log('[step/spec] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
+        devLog(`[step/spec] 工作流ID: ${CONFIG.WF_SPEC_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.WF_SPEC_ID}`);
+        devLog('[step/spec] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
 
         // 解析 spec JSON
         let spec = data;
@@ -201,6 +252,12 @@ router.post('/step/preview', requireAuth, async (req, res) => {
         if (!task_id) return res.status(400).json({ success: false, error: '缺少 task_id' });
         if (!spec) return res.status(400).json({ success: false, error: '缺少设计规范数据' });
 
+        // 检查并发任务数
+        const processingCount = countProcessingTasks(req.user.id);
+        if (processingCount >= CONFIG.KM_MAX_CONCURRENT) {
+            return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
+        }
+
         const task = getTaskById(req.user.id, task_id);
         if (!task) return res.status(404).json({ success: false, error: '任务不存在' });
 
@@ -218,15 +275,27 @@ router.post('/step/preview', requireAuth, async (req, res) => {
         const specStr = typeof spec === 'object' ? JSON.stringify(spec, null, 2) : String(spec);
         const parameters = {
             input: specStr,
-            image: refFileId,
             detail: detail || ''
         };
+
+        // 将 file_id 转换为 URL（仅当 refFileId 有效时）
+        if (refFileId && String(refFileId).trim()) {
+            try {
+                const imageUrl = await getCozeFileUrl(refFileId);
+                parameters.image = imageUrl;
+                console.log(`[stepPreview] 将 file_id ${refFileId} 转换为 URL: ${imageUrl}`);
+            } catch (err) {
+                console.warn('[stepPreview] 获取文件 URL 失败，将忽略参考图:', err.message);
+                // 不传递 image 参数，避免空值
+            }
+        }
+
         const data = await callCozeWorkflow(CONFIG.WF_PREVIEW_ID, parameters);
-        console.log(`[step/preview] 工作流ID: ${CONFIG.WF_PREVIEW_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.WF_PREVIEW_ID}`);
-        console.log('[step/preview] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
+        devLog(`[step/preview] 工作流ID: ${CONFIG.WF_PREVIEW_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.WF_PREVIEW_ID}`);
+        devLog('[step/preview] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
 
         // 调试：打印 Coze 返回的完整数据结构
-        console.log('[step/preview] Coze 返回的完整 data:', JSON.stringify(data, null, 2)?.slice(0, 2000) || 'undefined');
+        devLog('[step/preview] Coze 返回的完整 data:', JSON.stringify(data, null, 2)?.slice(0, 2000) || 'undefined');
 
         // 提取图片 URL — 从所有可能的字段中提取
         let imageUrl = '';
@@ -282,10 +351,10 @@ router.post('/step/preview', requireAuth, async (req, res) => {
             try {
                 output1Data = JSON.parse(data.output1.trim());
                 if (output1Data && typeof output1Data === 'object') {
-                    console.log('[step/preview] 解析 output1 成功，包含字段:', Object.keys(output1Data).join(', '));
+                    devLog('[step/preview] 解析 output1 成功，包含字段:', Object.keys(output1Data).join(', '));
                 }
             } catch (_) {
-                console.log('[step/preview] data.output1 不是 JSON，跳过');
+                devLog('[step/preview] data.output1 不是 JSON，跳过');
             }
         }
 
@@ -314,15 +383,15 @@ router.post('/step/preview', requireAuth, async (req, res) => {
                     extractTexts(parsed);
                     if (texts.length > 0) {
                         prompt = texts.join('；');
-                        console.log('[step/preview] 从 JSON prompt 中提取了文本:', prompt.slice(0, 100) + '...');
+                        devLog('[step/preview] 从 JSON prompt 中提取了文本:', prompt.slice(0, 100) + '...');
                     } else {
                         prompt = '';
-                        console.log('[step/preview] JSON prompt 中未提取到有效文本，将回退到其他字段');
+                        devLog('[step/preview] JSON prompt 中未提取到有效文本，将回退到其他字段');
                     }
                 } catch (_) {
                     // 不是有效 JSON，说明是截断的 JSON 或无效数据，清空 prompt 让后续字段兜底
                     prompt = '';
-                    console.log('[step/preview] data.prompt 不是有效 JSON，跳过，尝试其他字段');
+                    devLog('[step/preview] data.prompt 不是有效 JSON，跳过，尝试其他字段');
                 }
             }
         } else if (data && typeof data.preview_prompt === 'string' && data.preview_prompt.trim()) {
@@ -346,14 +415,14 @@ router.post('/step/preview', requireAuth, async (req, res) => {
                     extractTexts(parsed);
                     if (texts.length > 0) {
                         prompt = texts.join('；');
-                        console.log('[step/preview] 从 JSON preview_prompt 中提取了文本:', prompt.slice(0, 100) + '...');
+                        devLog('[step/preview] 从 JSON preview_prompt 中提取了文本:', prompt.slice(0, 100) + '...');
                     } else {
                         prompt = '';
                     }
                 } catch (_) {
                     // 不是有效 JSON，清空 prompt 让后续字段兜底
                     prompt = '';
-                    console.log('[step/preview] data.preview_prompt 不是有效 JSON，跳过，尝试其他字段');
+                    devLog('[step/preview] data.preview_prompt 不是有效 JSON，跳过，尝试其他字段');
                 }
             }
         } else if (data && typeof data.output1 === 'string' && data.output1.trim()) {
@@ -365,7 +434,7 @@ router.post('/step/preview', requireAuth, async (req, res) => {
                     const parsed = JSON.parse(prompt);
                     if (parsed && typeof parsed === 'object' && parsed.preview_prompt && typeof parsed.preview_prompt === 'string' && parsed.preview_prompt.trim()) {
                         prompt = parsed.preview_prompt.trim();
-                        console.log('[step/preview] 从 data.output1 JSON 提取 preview_prompt:', prompt.slice(0, 80) + '...');
+                        devLog('[step/preview] 从 data.output1 JSON 提取 preview_prompt:', prompt.slice(0, 80) + '...');
                     } else {
                         // JSON 中没有 preview_prompt，递归提取所有非空文本
                         const texts = [];
@@ -383,19 +452,19 @@ router.post('/step/preview', requireAuth, async (req, res) => {
                         extractTexts(parsed);
                         if (texts.length > 0) {
                             prompt = texts.join('；');
-                            console.log('[step/preview] 从 data.output1 JSON 提取文本:', prompt.slice(0, 80) + '...');
+                            devLog('[step/preview] 从 data.output1 JSON 提取文本:', prompt.slice(0, 80) + '...');
                         } else {
                             prompt = '';
-                            console.log('[step/preview] data.output1 JSON 中未提取到有效文本');
+                            devLog('[step/preview] data.output1 JSON 中未提取到有效文本');
                         }
                     }
                 } catch (_) {
                     // 解析失败，保持原样
-                    console.log('[step/preview] data.output1 不是 JSON，直接使用');
+                    devLog('[step/preview] data.output1 不是 JSON，直接使用');
                 }
             }
             if (prompt) {
-                console.log('[step/preview] 从 data.output1 提取到 prompt:', prompt.slice(0, 80) + (prompt.length > 80 ? '...' : ''));
+                devLog('[step/preview] 从 data.output1 提取到 prompt:', prompt.slice(0, 80) + (prompt.length > 80 ? '...' : ''));
             }
         } else if (data && typeof data.output === 'string' && data.output) {
             // 如果 output 包含 prompt 文本，提取非图片 URL 部分作为 prompt
@@ -430,9 +499,9 @@ router.post('/step/preview', requireAuth, async (req, res) => {
                 prompt = withoutUrls;
             }
         }
-        console.log('[step/preview] 提取到 prompt:', prompt ? prompt.slice(0, 80) + '...' : '(空)');
+        devLog('[step/preview] 提取到 prompt:', prompt ? prompt.slice(0, 80) + '...' : '(空)');
         if (!prompt) {
-            console.log('[step/preview] Coze 返回的完整 data 结构（前1000字符）:', JSON.stringify(data, null, 2)?.slice(0, 1000) || 'undefined');
+            devLog('[step/preview] Coze 返回的完整 data 结构（前1000字符）:', JSON.stringify(data, null, 2)?.slice(0, 1000) || 'undefined');
         }
 
         // 保存到 task.result（task.result 已是解析后的对象）
@@ -460,6 +529,12 @@ router.post('/step/multi', requireAuth, async (req, res) => {
         const { task_id, reference_image_url } = req.body || {};
         if (!task_id) return res.status(400).json({ success: false, error: '缺少 task_id' });
 
+        // 检查并发任务数
+        const processingCount = countProcessingTasks(req.user.id);
+        if (processingCount >= CONFIG.KM_MAX_CONCURRENT) {
+            return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
+        }
+
         const task = getTaskById(req.user.id, task_id);
         if (!task) return res.status(404).json({ success: false, error: '任务不存在' });
 
@@ -476,12 +551,12 @@ router.post('/step/multi', requireAuth, async (req, res) => {
         let inputText = '';
         if (taskResult && taskResult.preview && taskResult.preview.prompt) {
             inputText = String(taskResult.preview.prompt).trim();
-            console.log(`[step/multi] 使用第二步 output1 提取的 preview_prompt 作为 input (${inputText.length} 字符)`);
+            devLog(`[step/multi] 使用第二步 output1 提取的 preview_prompt 作为 input (${inputText.length} 字符)`);
         } else {
             // fallback：如果找不到 preview_prompt，使用原始用户输入
             if (task.params && task.params.user_input) {
                 inputText = String(task.params.user_input).trim();
-                console.log(`[step/multi] 未找到 preview_prompt，使用任务原始 user_input 作为 fallback: ${inputText.slice(0, 50)}...`);
+                devLog(`[step/multi] 未找到 preview_prompt，使用任务原始 user_input 作为 fallback: ${inputText.slice(0, 50)}...`);
             }
         }
 
@@ -498,22 +573,22 @@ router.post('/step/multi', requireAuth, async (req, res) => {
         // 只使用 URL（第二步工作流输出），不接受 file_id
         if (reference_image_url) {
             parameters.image = String(reference_image_url).replace(/`/g, '');
-            console.log('[step/multi] 使用 URL 作为 image 参数:', parameters.image);
+            devLog('[step/multi] 使用 URL 作为 image 参数:', parameters.image);
         } else if (taskResult && taskResult.preview && taskResult.preview.image_url) {
             parameters.image = String(taskResult.preview.image_url).replace(/`/g, '');
-            console.log('[step/multi] 从 task.result.preview.image_url 获取 URL:', parameters.image);
+            devLog('[step/multi] 从 task.result.preview.image_url 获取 URL:', parameters.image);
         } else {
-            console.error('[step/multi] 无可用图片 URL，请检查第二步工作流输出');
+            if (process.env.NODE_ENV !== 'production') console.error('[step/multi] 无可用图片 URL，请检查第二步工作流输出');
             return res.status(400).json({ success: false, error: '缺少参考图片 URL，请确保第二步工作流已成功生成预览图' });
         }
 
-        console.log(`[step/multi] 工作流ID: ${CONFIG.WF_MULTI_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.WF_MULTI_ID}`);
-        console.log('[step/multi] 参数:', JSON.stringify(parameters, null, 2));
+        devLog(`[step/multi] 工作流ID: ${CONFIG.WF_MULTI_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.WF_MULTI_ID}`);
+        devLog('[step/multi] 参数:', JSON.stringify(parameters, null, 2));
 
         const data = await callCozeWorkflow(CONFIG.WF_MULTI_ID, parameters);
 
         // 调试：打印 Coze 返回的完整数据结构
-        console.log('[step/multi] Coze 返回的完整 data:', JSON.stringify(data, null, 2)?.slice(0, 2000) || 'undefined');
+        devLog('[step/multi] Coze 返回的完整 data:', JSON.stringify(data, null, 2)?.slice(0, 2000) || 'undefined');
 
         // 提取图片 URL
         let imageUrl = '';
@@ -584,7 +659,7 @@ router.post('/step/rollback', requireAuth, async (req, res) => {
 
         res.json({ success: true, status: to_step === 'spec' ? 'spec_ready' : 'preview_ready' });
     } catch (e) {
-        console.error('[step/rollback]', e);
+        if (process.env.NODE_ENV !== 'production') console.error('[step/rollback]', e);
         res.status(500).json({ success: false, error: e.message });
     }
 });
@@ -646,7 +721,20 @@ router.post('/image', requireAuth, (req, res, next) => {
             });
         }
 
-        // 3️⃣ 二次校验：检测文件头魔数是否匹配扩展名（防止伪装）
+        // 3️⃣ 文件头二次校验后，使用 sharp 检查图片尺寸
+        const metadata = await sharp(file.data).metadata();
+        if (metadata.width > 4096 || metadata.height > 4096) {
+            return res.status(413).json({ success: false, error: '图片尺寸不能超过 4096×4096 像素' });
+        }
+
+        // 4️⃣ 检查用户每日上传次数限制（每天最多 20 次）
+        const uploadCount = checkUploadLimit(req.user.id);
+        if (uploadCount >= 20) {
+            return res.status(429).json({ success: false, error: '今日上传次数已达上限（20次），请明天再试' });
+        }
+        incrementUploadCount(req.user.id);
+
+        // 5️⃣ 二次校验：检测文件头魔数是否匹配扩展名（防止伪装）
         const extMap = { 'image/jpeg': ['jpg', 'jpeg'], 'image/png': ['png'], 'image/webp': ['webp'] };
         const ext = file.filename.split('.').pop().toLowerCase();
         if (!extMap[type.mime]?.includes(ext)) {
@@ -654,11 +742,125 @@ router.post('/image', requireAuth, (req, res, next) => {
         }
 
         const fileId = await uploadToCoze(file.data, type.mime, file.filename);
-        console.log(`[upload] ${file.filename} (${file.data.length}B) → ${fileId} (detected: ${type.mime})`);
-        res.json({ success: true, file_id: fileId });
+        devLog(`[upload] ${file.filename} (${file.data.length}B) → ${fileId} (detected: ${type.mime})`);
+
+        // 保存图片到本地
+        const uploadDir = path.join(__dirname, '../../public/uploads');
+        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+        const ext = path.extname(file.filename) || '.png';
+        const savedFilename = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext;
+        const savePath = path.join(uploadDir, savedFilename);
+        fs.writeFileSync(savePath, file.data);
+
+        // 构造可访问的 URL（生产环境需设置 BASE_URL）
+        const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+        const imageUrl = `${baseUrl}/uploads/${savedFilename}`;
+
+        res.json({ success: true, file_id: fileId, image_url: imageUrl });
     } catch (e) {
-        console.error('[upload]', e);
+        if (process.env.NODE_ENV !== 'production') console.error('[upload]', e);
         res.status(500).json({ success: false, error: '上传失败：' + e.message });
+    }
+});
+
+// ========== 仿香工作流 ==========
+
+/**
+ * 仿香生成
+ * POST /api/workflow/copy
+ * 输入：{ brand, name, ml }
+ * 输出：{ success: true, image_url: "..." }
+ */
+router.post('/copy', requireAuth, async (req, res) => {
+    try {
+        const { brand, name, ml } = req.body || {};
+        if (!brand || !String(brand).trim()) return res.status(400).json({ success: false, error: '缺少品牌' });
+        if (!name || !String(name).trim()) return res.status(400).json({ success: false, error: '缺少型号' });
+        if (!ml || !String(ml).trim()) return res.status(400).json({ success: false, error: '缺少毫升数' });
+
+        // 调用 Coze 仿香工作流
+        const parameters = {
+            input: String(brand).trim(),
+            name: String(name).trim(),
+            ml: String(ml).trim()
+        };
+        const data = await callCozeWorkflow(CONFIG.COPY_WORKFLOW_ID, parameters);
+        devLog(`[copy] 工作流ID: ${CONFIG.COPY_WORKFLOW_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.COPY_WORKFLOW_ID}`);
+        devLog('[copy] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
+
+        // 提取图片 URL
+        let imageUrl = '';
+        if (data && data.image_url) {
+            imageUrl = String(data.image_url).replace(/^`|`$/g, '');
+        }
+        if (!imageUrl && data && data.output) {
+            const urls = extractImageUrls(data.output);
+            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+        if (!imageUrl && typeof data === 'string') {
+            const urls = extractImageUrls(data);
+            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+
+        if (!imageUrl) {
+            if (process.env.NODE_ENV !== 'production') console.error('[copy] 未找到图片 URL，data 结构:', JSON.stringify(data, null, 2)?.slice(0, 1000));
+            return res.json({ success: false, image_url: null, error: '仿香工作流未返回图片，请检查工作流配置或稍后重试' });
+        }
+
+        res.json({ success: true, image_url: imageUrl });
+    } catch (e) {
+        if (process.env.NODE_ENV !== 'production') console.error('[copy]', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
+});
+
+/**
+ * 仿香微调
+ * POST /api/workflow/tweak
+ * 输入：{ image_url, detail }
+ * 输出：{ success: true, image_url: "..." }
+ */
+router.post('/tweak', requireAuth, async (req, res) => {
+    try {
+        const { image_url, detail } = req.body || {};
+        if (!image_url || !String(image_url).trim()) return res.status(400).json({ success: false, error: '缺少图片 URL' });
+        if (!detail || !String(detail).trim()) return res.status(400).json({ success: false, error: '缺少修改意见' });
+
+        // 清理 URL 中的反引号
+        const cleanUrl = String(image_url).replace(/^`|`$/g, '');
+
+        // 调用 Coze 微调工作流
+        const parameters = {
+            image: cleanUrl,
+            detail: String(detail).trim()
+        };
+        const data = await callCozeWorkflow(CONFIG.TWEAK_WORKFLOW_ID, parameters);
+        devLog(`[tweak] 工作流ID: ${CONFIG.TWEAK_WORKFLOW_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.TWEAK_WORKFLOW_ID}`);
+        devLog('[tweak] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
+
+        // 提取新的图片 URL
+        let imageUrl = '';
+        if (data && data.image_url) {
+            imageUrl = String(data.image_url).replace(/^`|`$/g, '');
+        }
+        if (!imageUrl && data && data.output) {
+            const urls = extractImageUrls(data.output);
+            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+        if (!imageUrl && typeof data === 'string') {
+            const urls = extractImageUrls(data);
+            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+
+        if (!imageUrl) {
+            if (process.env.NODE_ENV !== 'production') console.error('[tweak] 未找到图片 URL，data 结构:', JSON.stringify(data, null, 2)?.slice(0, 1000));
+            return res.json({ success: false, image_url: null, error: '微调工作流未返回图片，请稍后重试' });
+        }
+
+        res.json({ success: true, image_url: imageUrl });
+    } catch (e) {
+        if (process.env.NODE_ENV !== 'production') console.error('[tweak]', e);
+        res.status(500).json({ success: false, error: e.message });
     }
 });
 

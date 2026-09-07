@@ -71,8 +71,10 @@
 
     // ============================================================
     // 4. 悬停 → 预加载目标页面（300ms 防抖）
+    //    使用 AbortController 防止导航时产生 net::ERR_ABORTED
     // ============================================================
     var prefetchTimer;
+    var prefetchController = null;
     document.addEventListener('mouseover', function (e) {
         var link = e.target.closest('a[href]');
         if (!link) return;
@@ -86,22 +88,41 @@
 
         clearTimeout(prefetchTimer);
         prefetchTimer = setTimeout(function () {
+            // 取消上一个未完成的预加载
+            if (prefetchController) {
+                prefetchController.abort();
+            }
+            prefetchController = new AbortController();
             prefetchCache[href] = 'loading';
-            fetch(href, { method: 'GET', mode: 'same-origin', credentials: 'same-origin' })
+            fetch(href, {
+                method: 'GET',
+                mode: 'same-origin',
+                credentials: 'same-origin',
+                signal: prefetchController.signal
+            })
                 .then(function (r) {
                     prefetchCache[href] = r.ok ? 'done' : 'error';
                 })
-                .catch(function () {
+                .catch(function (err) {
+                    if (err && err.name === 'AbortError') return;
                     prefetchCache[href] = 'error';
                 });
+        // 页面卸载前主动中止所有预加载请求，避免浏览器打印 ERR_ABORTED
+        window.addEventListener('beforeunload', function () {
+            if (prefetchController) { prefetchController.abort(); }
+        });
         }, 300);
     });
 
-    // 鼠标离开链接时取消预加载
+    // 鼠标离开链接时取消预加载定时器和请求
     document.addEventListener('mouseout', function (e) {
         var link = e.target.closest('a[href]');
         if (!link) return;
         clearTimeout(prefetchTimer);
+        if (prefetchController) {
+            prefetchController.abort();
+            prefetchController = null;
+        }
     });
 
     // ============================================================

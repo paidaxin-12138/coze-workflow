@@ -1,6 +1,7 @@
 // 认证路由 - 注册/登录/登出/账户管理
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import rateLimit from 'express-rate-limit';
 import db, {
     createUser, getUserByDesignerId, getUserById,
     createSession, deleteSession, shouldFirstUserBeAdmin, ensureRootAdmin
@@ -8,6 +9,15 @@ import db, {
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();
+
+// 注册接口限流：每 IP 每小时最多 5 次注册
+const registerLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    message: { error: '注册过于频繁，请稍后再试' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
 
 function formatUser(user) {
     return {
@@ -20,7 +30,7 @@ function formatUser(user) {
 }
 
 // POST /api/register
-router.post('/register', async (req, res) => {
+router.post('/register', registerLimiter, async (req, res) => {
     try {
         const { designer_id, password, email, display_name } = req.body;
         if (!designer_id || !password) return res.status(400).json({ error: '请提供 designer_id 和 password' });
@@ -55,7 +65,7 @@ router.post('/login', async (req, res) => {
         const session = createSession(user.id);
         return res.json({ success: true, token: session.token, user: formatUser(user) });
     } catch (e) {
-        console.error('登录失败:', e);
+        if (process.env.NODE_ENV !== 'production') console.error('登录失败:', e);
         return res.status(500).json({ error: '登录失败' });
     }
 });

@@ -970,7 +970,7 @@ async function uploadRefImage(file) {
     try {
         const fd = new FormData();
         fd.append('file', file);
-        const res = await fetch(`${getAPIUrl()}/api/upload/image`, {
+        const res = await fetch(`${getAPIUrl()}/api/workflow/image`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${getAuthToken()}` },
             body: fd
@@ -1014,7 +1014,7 @@ async function uploadRefImageAndGetId(file) {
     }
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch(`${getAPIUrl()}/api/upload/image`, {
+    const res = await fetch(`${getAPIUrl()}/api/workflow/image`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getAuthToken()}` },
         body: fd

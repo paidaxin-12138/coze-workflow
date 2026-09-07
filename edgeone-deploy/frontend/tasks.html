@@ -45,6 +45,10 @@
                     <span class="material-symbols-outlined text-[20px]">auto_awesome</span>
                     <span class="text-sm font-medium">工坊</span>
                 </a>
+                <a href="copy.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                    <span class="material-symbols-outlined text-[20px]">content_copy</span>
+                    <span class="text-sm font-medium">仿香</span>
+                </a>
                 <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700 transition-colors duration-200">
                     <span class="material-symbols-outlined text-[20px]">task_alt</span>
                     <span class="text-sm font-medium">任务</span>
@@ -93,6 +97,7 @@
                     <nav class="flex-1 flex flex-col gap-1">
                         <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">首页</a>
                         <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">工坊</a>
+                        <a href="copy.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">仿香</a>
                         <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700">任务</a>
                         <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">收藏</a>
                         <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">关于</a>
@@ -353,7 +358,7 @@
 
         async function loadTasks() {
             try {
-                const j = await api('/api/tasks');
+                const j = await api('/api/workflow');
                 TASKS = j.tasks || [];
                 renderTasks();
             } catch (e) { toast('加载失败：' + e.message); }
@@ -445,7 +450,7 @@
             if (!userInput) return msg.textContent = '请描述你的香水设计概念';
             btn.disabled = true; btn.textContent = '创建中...'; msg.textContent = '';
             try {
-                const j = await api('/api/tasks', {
+                const j = await api('/api/workflow', {
                     method: 'POST',
                     body: JSON.stringify({ name, params: { user_input: userInput, image_file_id: uploaded?.file_id || '' } })
                 });
@@ -570,7 +575,7 @@
                 await new Promise(r => setTimeout(r, 400));
             }
             try {
-                await api('/api/tasks/' + id, { method: 'DELETE' });
+                await api('/api/workflow/' + id, { method: 'DELETE' });
                 TASKS = TASKS.filter(t => t.id !== id);
                 renderTasks();
                 toast('任务已删除');
@@ -616,7 +621,7 @@
             if (!confirm(`确认清空全部 ${total} 个任务吗？此操作不可撤销。`)) return;
 
             try {
-                const res = await api('/api/tasks/clear', { method: 'DELETE' });
+                const res = await api('/api/workflow/clear', { method: 'DELETE' });
                 if (res.success) {
                     TASKS = [];
                     renderTasks();

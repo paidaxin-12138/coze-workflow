@@ -6,8 +6,8 @@ import crypto from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// 强制使用项目根目录 data.db（忽略 TRAE 注入的无效 DB_PATH）
-const DB_PATH = path.join(__dirname, 'data.db');
+// 数据库路径：优先从环境变量 DB_PATH 读取，回退到项目根目录 data.db
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 
 let db;
 try {

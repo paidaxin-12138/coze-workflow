@@ -33,6 +33,10 @@ export const CONFIG = {
     WF_PREVIEW_ID: process.env.WF_PREVIEW_ID || '',     // 预览图生成工作流
     WF_MULTI_ID: process.env.WF_MULTI_ID || '',         // 多角度生成工作流
 
+    // 仿香工作流 ID
+    COPY_WORKFLOW_ID: process.env.COPY_WORKFLOW_ID || '7680825923813900314',
+    TWEAK_WORKFLOW_ID: process.env.TWEAK_WORKFLOW_ID || process.env.COPY_WORKFLOW_ID || '7680825923813900314',
+
     // Coze 鉴权 Token（兼容旧变量名）
     KM_COZE_TOKEN: process.env.KM_COZE_TOKEN || process.env.COZE_API_KEY || '',
 
