@@ -270,7 +270,12 @@
                                 </div>
                                 <button type="button" id="refRemove" class="text-xs tracking-widest uppercase text-clay-600 hover:text-clay-700 transition-colors">移除</button>
                             </div>
-                            <p id="refUploading" class="hidden text-xs text-forest-700 mt-2">参考图上传中...</p>
+                            <div id="refUploading" class="hidden flex-col gap-1 mt-2">
+                                <p class="text-xs text-forest-700">参考图上传中...</p>
+                                <div class="w-full h-1.5 bg-sand-200 rounded-full overflow-hidden">
+                                    <div id="refUploadProgress" class="h-full bg-forest-600 rounded-full transition-all duration-300" style="width: 0%;"></div>
+                                </div>
+                            </div>
                         </div>
 
                         <!-- 高级选项 -->
@@ -535,9 +540,14 @@
                     <span class="text-xs text-ink-light">未上传参考图</span>
                     <button type="button" class="text-xs tracking-widest uppercase text-forest-700 hover:text-forest-800 transition-colors" id="specRefUploadBtn">上传图片</button>
                 </div>
-                <div id="specRefUploading" class="hidden items-center gap-2">
-                    <span class="material-symbols-outlined text-forest-600 animate-spin text-sm">refresh</span>
-                    <span class="text-xs text-forest-700">上传中...</span>
+                <div id="specRefUploading" class="hidden flex-col gap-1">
+                    <div class="flex items-center gap-2">
+                        <span class="material-symbols-outlined text-forest-600 animate-spin text-sm">refresh</span>
+                        <span class="text-xs text-forest-700">上传中...</span>
+                    </div>
+                    <div class="w-full h-1 bg-sand-200 rounded-full overflow-hidden">
+                        <div id="specRefUploadProgress" class="h-full bg-forest-600 rounded-full transition-all duration-300" style="width: 0%;"></div>
+                    </div>
                 </div>
                 <div id="specRefSuccess" class="hidden items-center justify-between">
                     <div class="flex items-center gap-2">
@@ -572,8 +582,8 @@
     </div>
 
     <!-- ============ 图片放大 Modal ============ -->
-    <div class="fixed inset-0 z-[100] bg-sand-50/95 backdrop-blur-xl hidden flex-col items-center justify-center opacity-0 transition-opacity duration-300 p-8" id="imageModal">
-        <button type="button" class="absolute top-8 right-8 w-12 h-12 rounded-full border border-sand-100/30 flex items-center justify-center text-sand-100 hover:bg-sand-100/10 transition-colors" onclick="closeModal()">
+    <div class="fixed inset-0 z-[100] bg-sand-50/95 backdrop-blur-xl hidden flex-col items-center justify-center opacity-0 transition-opacity duration-300 p-8" id="imageModal" onclick="if (event.target === this) window.closeModal()">
+        <button type="button" class="absolute top-8 right-8 w-12 h-12 rounded-full border border-sand-100/30 flex items-center justify-center text-sand-100 hover:bg-sand-100/10 transition-colors" onclick="window.closeModal()">
             <span class="material-symbols-outlined text-[24px]">close</span>
         </button>
         <div class="w-full max-w-[800px] aspect-[3/4] md:aspect-auto md:h-[819px] bg-cover bg-center border border-sand-100/20" id="modalImage"></div>

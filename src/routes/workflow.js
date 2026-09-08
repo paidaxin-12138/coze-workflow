@@ -14,7 +14,7 @@ import { extractImageUrls } from '../coze/sse.js';
 import { uploadToCoze, callCozeFallback, getCozeFileUrl } from '../coze/client.js';
 import { fileTypeFromBuffer } from 'file-type';
 import sharp from 'sharp';
-
+import OSS from 'ali-oss';
 const router = Router();
 
 // 非生产环境日志
@@ -94,8 +94,21 @@ router.put('/:id', requireAuth, (req, res) => {
 });
 
 // 清空当前用户的所有任务（必须在 /:id 之前，避免被 /:id 拦截）
-router.delete('/', requireAuth, (req, res) => {
+router.delete('/', requireAuth, async (req, res) => {
     try {
+        const tasks = listTasks(req.user.id);
+        const allUrls = [];
+        for (const task of tasks) {
+            if (task.params?.image_url) allUrls.push(task.params.image_url);
+            if (task.result?.preview?.image_url) allUrls.push(task.result.preview.image_url);
+            if (task.result?.multi?.image_url) allUrls.push(task.result.multi.image_url);
+            if (task.result?.multi_angle_images) allUrls.push(...task.result.multi_angle_images);
+            if (task.result?.copy_image) allUrls.push(task.result.copy_image);
+            if (task.result?.image_url) allUrls.push(task.result.image_url);
+        }
+        if (allUrls.length > 0) {
+            await deleteOSSFiles(allUrls);
+        }
         const count = clearTasks(req.user.id);
         res.json({ success: true, deletedCount: count });
     } catch (e) {
@@ -105,8 +118,21 @@ router.delete('/', requireAuth, (req, res) => {
 });
 
 // 兼容性路由：/clear 也映射到清空操作
-router.delete('/clear', requireAuth, (req, res) => {
+router.delete('/clear', requireAuth, async (req, res) => {
     try {
+        const tasks = listTasks(req.user.id);
+        const allUrls = [];
+        for (const task of tasks) {
+            if (task.params?.image_url) allUrls.push(task.params.image_url);
+            if (task.result?.preview?.image_url) allUrls.push(task.result.preview.image_url);
+            if (task.result?.multi?.image_url) allUrls.push(task.result.multi.image_url);
+            if (task.result?.multi_angle_images) allUrls.push(...task.result.multi_angle_images);
+            if (task.result?.copy_image) allUrls.push(task.result.copy_image);
+            if (task.result?.image_url) allUrls.push(task.result.image_url);
+        }
+        if (allUrls.length > 0) {
+            await deleteOSSFiles(allUrls);
+        }
         const count = clearTasks(req.user.id);
         res.json({ success: true, deletedCount: count });
     } catch (e) {
@@ -115,10 +141,41 @@ router.delete('/clear', requireAuth, (req, res) => {
     }
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
-    if (!deleteTask(req.user.id, req.params.id))
-        return res.status(404).json({ success: false, error: '任务不存在' });
-    res.json({ success: true });
+router.delete('/:id', requireAuth, async (req, res) => {
+    try {
+        const task = getTaskById(req.user.id, req.params.id);
+        if (!task) return res.status(404).json({ success: false, error: '任务不存在' });
+
+        // 收集所有 OSS 图片 URL
+        const urls = [];
+
+        // 参考图（三步工作流）
+        if (task.params?.image_url) urls.push(task.params.image_url);
+
+        // 预览图和多角度图（三步工作流）
+        if (task.result?.preview?.image_url) urls.push(task.result.preview.image_url);
+        if (task.result?.multi?.image_url) urls.push(task.result.multi.image_url);
+        if (task.result?.multi_angle_images) urls.push(...task.result.multi_angle_images);
+
+        // 仿香图片
+        if (task.result?.copy_image) urls.push(task.result.copy_image);
+        if (task.result?.image_url) urls.push(task.result.image_url);
+
+        // 删除 OSS 文件
+        if (urls.length > 0) {
+            await deleteOSSFiles(urls);
+        }
+
+        // 删除数据库记录
+        if (!deleteTask(req.user.id, req.params.id)) {
+            return res.status(404).json({ success: false, error: '任务不存在' });
+        }
+
+        res.json({ success: true, message: '任务及关联图片已删除' });
+    } catch (e) {
+        console.error('[DELETE /:id]', e);
+        res.status(500).json({ success: false, error: e.message });
+    }
 });
 
 // ========== 三步工作流 ==========
@@ -166,6 +223,74 @@ async function callCozeWorkflow(workflowId, parameters) {
         throw new Error('工作流返回了无效数据格式');
     }
     return data;
+}
+
+/**
+ * 从 OSS URL 中提取对象键
+ */
+function getOSSKeyFromUrl(url) {
+    try {
+        const u = new URL(url);
+        // OSS URL 格式: https://<bucket>.oss-<region>.aliyuncs.com/<key>
+        return u.pathname.startsWith('/') ? u.pathname.slice(1) : u.pathname;
+    } catch { return null; }
+}
+
+/**
+ * 批量删除 OSS 文件
+ */
+async function deleteOSSFiles(urls) {
+    if (!urls || urls.length === 0) return;
+    const client = new OSS({
+        region: process.env.OSS_REGION,
+        accessKeyId: process.env.OSS_ACCESS_KEY_ID,
+        accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
+        bucket: process.env.OSS_BUCKET,
+    });
+    const keys = urls.map(u => getOSSKeyFromUrl(u)).filter(Boolean);
+    if (keys.length === 0) return;
+    try {
+        await client.deleteMulti(keys);
+        console.log(`[OSS] 已删除 ${keys.length} 个文件`);
+    } catch (e) {
+        console.warn('[OSS] 批量删除失败:', e.message);
+    }
+}
+
+/**
+ * 从 URL 下载图片并上传到 OSS
+ * @param {string} sourceUrl - Coze 返回的图片 URL
+ * @param {string} prefix - 存储前缀（如 'copy'）
+ * @returns {Promise<string>} OSS 上的图片 URL
+ */
+async function saveImageToOSS(sourceUrl, prefix = 'images') {
+    if (!sourceUrl) return sourceUrl;
+    const cleanUrl = String(sourceUrl).replace(/^`|`$/g, '');
+    // 下载图片
+    const resp = await fetch(cleanUrl);
+    if (!resp.ok) {
+        console.warn(`[OSS] 下载图片失败: ${cleanUrl} (${resp.status})`);
+        return sourceUrl; // 降级返回原 URL
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const ext = path.extname(new URL(cleanUrl).pathname) || '.png';
+    const filename = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext;
+    const ossKey = `${prefix}/${filename}`;
+
+    const client = new OSS({
+        region: process.env.OSS_REGION,
+        accessKeyId: process.env.OSS_ACCESS_KEY_ID,
+        accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
+        bucket: process.env.OSS_BUCKET,
+    });
+    try {
+        const result = await client.put(ossKey, buffer);
+        console.log(`[OSS] 图片已保存: ${result.url}`);
+        return result.url;
+    } catch (e) {
+        console.warn('[OSS] 上传失败，降级返回原 URL:', e.message);
+        return sourceUrl;
+    }
 }
 
 /**
@@ -248,7 +373,7 @@ router.post('/step/spec', requireAuth, async (req, res) => {
  */
 router.post('/step/preview', requireAuth, async (req, res) => {
     try {
-        const { task_id, spec, detail, ref_file_id } = req.body || {};
+        const { task_id, spec, detail, ref_file_id, image_url } = req.body || {};
         if (!task_id) return res.status(400).json({ success: false, error: '缺少 task_id' });
         if (!spec) return res.status(400).json({ success: false, error: '缺少设计规范数据' });
 
@@ -264,13 +389,6 @@ router.post('/step/preview', requireAuth, async (req, res) => {
         // 更新任务状态
         updateTask(task.id, { status: 'processing', error: null });
 
-        // 优先使用前端传入的 ref_file_id，其次使用 DB 中存储的 image_file_id
-        let refFileId = ref_file_id || '';
-        if (!refFileId) {
-            const taskParams = (task.params && typeof task.params === 'object') ? task.params : {};
-            refFileId = taskParams.image_file_id || '';
-        }
-
         // 将 spec 转为字符串传入工作流 — 输入参数: input(string), image(string), detail(string)
         const specStr = typeof spec === 'object' ? JSON.stringify(spec, null, 2) : String(spec);
         const parameters = {
@@ -278,16 +396,30 @@ router.post('/step/preview', requireAuth, async (req, res) => {
             detail: detail || ''
         };
 
-        // 将 file_id 转换为 URL（仅当 refFileId 有效时）
-        if (refFileId && String(refFileId).trim()) {
-            try {
-                const imageUrl = await getCozeFileUrl(refFileId);
-                parameters.image = imageUrl;
-                console.log(`[stepPreview] 将 file_id ${refFileId} 转换为 URL: ${imageUrl}`);
-            } catch (err) {
-                console.warn('[stepPreview] 获取文件 URL 失败，将忽略参考图:', err.message);
-                // 不传递 image 参数，避免空值
+        // 优先使用前端传入的 image_url（直接可用），其次从 DB 任务参数中获取 image_url
+        let refImageUrl = image_url || '';
+        if (!refImageUrl) {
+            const taskParams = (task.params && typeof task.params === 'object') ? task.params : {};
+            refImageUrl = taskParams.image_url || '';
+        }
+        // 最后降级：使用 file_id 转换
+        if (!refImageUrl) {
+            let refFileId = ref_file_id || '';
+            if (!refFileId) {
+                const taskParams = (task.params && typeof task.params === 'object') ? task.params : {};
+                refFileId = taskParams.image_file_id || '';
             }
+            if (refFileId && String(refFileId).trim()) {
+                try {
+                    refImageUrl = await getCozeFileUrl(refFileId);
+                    console.log(`[stepPreview] 将 file_id ${refFileId} 转换为 URL: ${refImageUrl}`);
+                } catch (err) {
+                    console.warn('[stepPreview] 获取文件 URL 失败，将忽略参考图:', err.message);
+                }
+            }
+        }
+        if (refImageUrl) {
+            parameters.image = String(refImageUrl).replace(/`/g, '');
         }
 
         const data = await callCozeWorkflow(CONFIG.WF_PREVIEW_ID, parameters);
@@ -736,8 +868,8 @@ router.post('/image', requireAuth, (req, res, next) => {
 
         // 5️⃣ 二次校验：检测文件头魔数是否匹配扩展名（防止伪装）
         const extMap = { 'image/jpeg': ['jpg', 'jpeg'], 'image/png': ['png'], 'image/webp': ['webp'] };
-        const ext = file.filename.split('.').pop().toLowerCase();
-        if (!extMap[type.mime]?.includes(ext)) {
+        const fileExt = file.filename.split('.').pop().toLowerCase();
+        if (!extMap[type.mime]?.includes(fileExt)) {
             return res.status(415).json({ success: false, error: '文件扩展名与真实内容不匹配' });
         }
 
@@ -745,18 +877,35 @@ router.post('/image', requireAuth, (req, res, next) => {
         devLog(`[upload] ${file.filename} (${file.data.length}B) → ${fileId} (detected: ${type.mime})`);
 
         // 保存图片到本地
-        const uploadDir = path.join(__dirname, '../../public/uploads');
-        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-        const ext = path.extname(file.filename) || '.png';
-        const savedFilename = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + ext;
-        const savePath = path.join(uploadDir, savedFilename);
-        fs.writeFileSync(savePath, file.data);
+        // 上传到阿里云 OSS
+        const client = new OSS({
+            region: process.env.OSS_REGION,
+            accessKeyId: process.env.OSS_ACCESS_KEY_ID,
+            accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
+            bucket: process.env.OSS_BUCKET,
+        });
 
-        // 构造可访问的 URL（生产环境需设置 BASE_URL）
-        const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-        const imageUrl = `${baseUrl}/uploads/${savedFilename}`;
+            const saveExt = path.extname(file.filename) || '.png';
+            const savedFilename = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + saveExt;
+            const ossKey = `uploads/${savedFilename}`;
 
-        res.json({ success: true, file_id: fileId, image_url: imageUrl });
+        try {
+            const result = await client.put(ossKey, file.data);
+            const imageUrl = result.url;  // OSS 返回的完整 URL
+            console.log(`[upload] 图片已上传到 OSS: ${imageUrl}`);
+            res.json({ success: true, file_id: fileId, image_url: imageUrl });
+        } catch (ossErr) {
+            console.error('[upload] OSS 上传失败:', ossErr.message);
+            // 降级：尝试本地存储
+            const uploadDir = path.join(__dirname, '../../public/uploads');
+            if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+            const savePath = path.join(uploadDir, savedFilename);
+            fs.writeFileSync(savePath, file.data);
+            const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
+            const imageUrl = `${baseUrl}/uploads/${savedFilename}`;
+            res.json({ success: true, file_id: fileId, image_url: imageUrl });
+        }
+
     } catch (e) {
         if (process.env.NODE_ENV !== 'production') console.error('[upload]', e);
         res.status(500).json({ success: false, error: '上传失败：' + e.message });
@@ -800,6 +949,11 @@ router.post('/copy', requireAuth, async (req, res) => {
         if (!imageUrl && typeof data === 'string') {
             const urls = extractImageUrls(data);
             if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+
+        // 保存仿香图片到 OSS
+        if (imageUrl) {
+            imageUrl = await saveImageToOSS(imageUrl, 'copy');
         }
 
         if (!imageUrl) {
@@ -850,6 +1004,11 @@ router.post('/tweak', requireAuth, async (req, res) => {
         if (!imageUrl && typeof data === 'string') {
             const urls = extractImageUrls(data);
             if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        }
+
+        // 保存微调图片到 OSS
+        if (imageUrl) {
+            imageUrl = await saveImageToOSS(imageUrl, 'copy');
         }
 
         if (!imageUrl) {

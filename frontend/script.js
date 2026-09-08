@@ -124,8 +124,8 @@ function saveTasksToStorage() {
     try {
         const arr = Array.from(tasksMap.entries()).map(([id, task]) => {
             // 只保存关键字段，不保存函数等不可序列化数据
-            const { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt } = task;
-            return [id, { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt }];
+            const { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt, refFileId, refImageUrl } = task;
+            return [id, { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt, refFileId, refImageUrl }];
         });
         localStorage.setItem(TASKS_MAP_KEY, JSON.stringify(arr));
     } catch (_) {}
@@ -919,7 +919,8 @@ window.openLargeImageModal = function(url) {
     const img = document.getElementById('modalImage');
     if (!modal || !img || !url) return;
     img.style.backgroundImage = 'url(' + url + ')';
-    modal.style.display = 'flex';
+    modal.style.display = '';
+    modal.classList.remove('hidden');
     modal.classList.add('flex');
     setTimeout(() => { modal.style.opacity = '1'; }, 10);
 };
@@ -935,6 +936,7 @@ const refFileName = $('refFileName');
 const refFileIdText = $('refFileId');
 const refUploadingText = $('refUploading');
 let refImageFileId = null;
+let refImageUrl = null;
 
 if (refZone && refFileInput) {
     refZone.addEventListener('click', () => refFileInput.click());
@@ -956,49 +958,80 @@ if (refZone && refFileInput) {
     const refRemoveBtn = $('refRemove');
     if (refRemoveBtn) refRemoveBtn.addEventListener('click', () => {
         refImageFileId = null;
+        refImageUrl = null;
         refUploadedBox.classList.add('hidden');
         refUploadedBox.classList.remove('flex');
         refFileInput.value = '';
     });
 }
 
-async function uploadRefImage(file) {
-    if (!file.type.startsWith('image/')) { showErrorInline('参考图仅支持图片文件'); return; }
-    if (file.size > 5 * 1024 * 1024) { showErrorInline('参考图不能超过 5MB'); return; }
-    if (!getAuthToken()) { window.location.href = 'login.html?redirect=studio.html'; return; }
-    if (refUploadingText) refUploadingText.classList.remove('hidden');
-    try {
+function uploadRefImage(file) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) { showErrorInline('参考图仅支持图片文件'); reject(new Error('图片格式错误')); return; }
+        if (file.size > 5 * 1024 * 1024) { showErrorInline('参考图不能超过 5MB'); reject(new Error('图片过大')); return; }
+        if (!getAuthToken()) { window.location.href = 'login.html?redirect=studio.html'; reject(new Error('未登录')); return; }
+
+        const refUploadProgress = document.getElementById('refUploadProgress');
+        if (refUploadingText) refUploadingText.classList.remove('hidden');
+        if (refUploadProgress) refUploadProgress.style.width = '0%';
+
         const fd = new FormData();
         fd.append('file', file);
-        const res = await fetch(`${getAPIUrl()}/api/workflow/image`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${getAuthToken()}` },
-            body: fd
-        });
-        const j = await res.json().catch(() => ({}));
-        if (res.status === 401) {
-            try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
-            alert('登录已过期，请重新登录');
-            window.location.href = 'login.html?redirect=studio.html';
-            return;
-        }
-        if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
-        refImageFileId = j.file_id;
-        if (refThumb) refThumb.src = URL.createObjectURL(file);
-        if (refFileName) refFileName.textContent = file.name;
-        if (refFileIdText) refFileIdText.textContent = 'file_id: ' + j.file_id;
-        if (refUploadedBox) {
-            refUploadedBox.classList.remove('hidden');
-            refUploadedBox.classList.add('flex');
-        }
-        showToast(`参考图「${file.name}」上传成功`);
-        console.log('🖼️ 参考图已上传:', file.name, '→', j.file_id);
-    } catch (e) {
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${getAPIUrl()}/api/workflow/image`);
+        xhr.setRequestHeader('Authorization', `Bearer ${getAuthToken()}`);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && refUploadProgress) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                refUploadProgress.style.width = pct + '%';
+            }
+        };
+
+        xhr.onload = function () {
+            try {
+                const j = JSON.parse(xhr.responseText || '{}');
+                if (xhr.status === 401) {
+                    try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+                    alert('登录已过期，请重新登录');
+                    window.location.href = 'login.html?redirect=studio.html';
+                    reject(new Error('未登录'));
+                    return;
+                }
+                if (xhr.status < 200 || xhr.status >= 300) throw new Error(j.error || `HTTP ${xhr.status}`);
+                if (refUploadProgress) refUploadProgress.style.width = '100%';
+
+                refImageFileId = j.file_id;
+                if (j.image_url) refImageUrl = j.image_url;
+                if (refThumb) refThumb.src = URL.createObjectURL(file);
+                if (refFileName) refFileName.textContent = file.name;
+                if (refFileIdText) refFileIdText.textContent = 'file_id: ' + j.file_id;
+                if (refUploadedBox) {
+                    refUploadedBox.classList.remove('hidden');
+                    refUploadedBox.classList.add('flex');
+                }
+                showToast(`参考图「${file.name}」上传成功`);
+                console.log('🖼️ 参考图已上传:', file.name, '→', j.file_id, j.image_url ? '| URL: ' + j.image_url.slice(0, 60) : '');
+                resolve(j);
+            } catch (e) {
+                reject(e);
+            }
+        };
+
+        xhr.onerror = () => { reject(new Error('网络错误')); };
+        xhr.ontimeout = () => { reject(new Error('上传超时')); };
+        xhr.timeout = 120000;
+
+        xhr.send(fd);
+    }).catch(e => {
         refImageFileId = null;
+        refImageUrl = null;
         showErrorInline('参考图上传失败，请稍后重试');
-    } finally {
+        throw e;
+    }).finally(() => {
         if (refUploadingText) refUploadingText.classList.add('hidden');
-    }
+    });
 }
 
 // 新增：上传图片并返回 file_id（供并发调用使用，不操作 UI）
@@ -1023,7 +1056,7 @@ async function uploadRefImageAndGetId(file) {
     if (!res.ok) {
         throw new Error(data.error || '上传失败');
     }
-    return data.file_id;
+    return { file_id: data.file_id, image_url: data.image_url };
 }
 
 // 更新 specModal 中的参考图上传区域状态
@@ -1043,11 +1076,12 @@ function updateSpecRefState(task) {
     failedEl.classList.add('hidden');
 
     const refFileId = task.refFileId || '';
+    const refUrl = task.refImageUrl || '';
     if (refFileId) {
         // 已上传成功
         successEl.classList.remove('hidden');
         successEl.classList.add('flex');
-        if (fileIdDisplay) fileIdDisplay.textContent = 'file_id: ' + refFileId;
+        if (fileIdDisplay) fileIdDisplay.textContent = refUrl ? 'URL: ' + refUrl.slice(0, 60) + '...' : 'file_id: ' + refFileId;
     } else {
         // 未上传
         emptyEl.classList.remove('hidden');
@@ -1069,8 +1103,8 @@ function updateSpecRefState(task) {
     if (changeBtn) changeBtn.addEventListener('click', () => fileInput.click());
     if (retryBtn) retryBtn.addEventListener('click', () => fileInput.click());
 
-    // 选择文件后上传
-    fileInput.addEventListener('change', async () => {
+    // 选择文件后上传（带进度条）
+    fileInput.addEventListener('change', () => {
         const f = fileInput.files && fileInput.files[0];
         if (!f) return;
         const taskId = _currentSpecTaskId;
@@ -1082,27 +1116,82 @@ function updateSpecRefState(task) {
         const uploadingEl = document.getElementById('specRefUploading');
         const successEl = document.getElementById('specRefSuccess');
         const failedEl = document.getElementById('specRefFailed');
+        const specRefProgress = document.getElementById('specRefUploadProgress');
         if (emptyEl) emptyEl.classList.add('hidden');
         if (uploadingEl) { uploadingEl.classList.remove('hidden'); uploadingEl.classList.add('flex'); }
         if (successEl) successEl.classList.add('hidden');
         if (failedEl) failedEl.classList.add('hidden');
+        if (specRefProgress) specRefProgress.style.width = '0%';
 
-        try {
-            const fileId = await uploadRefImageAndGetId(f);
-            task.refFileId = fileId;
-            refImageFileId = fileId;
-            showToast('参考图上传成功');
-            // 更新状态
-            const fileIdDisplay = document.getElementById('specRefFileIdDisplay');
-            if (uploadingEl) uploadingEl.classList.add('hidden');
-            if (successEl) { successEl.classList.remove('hidden'); successEl.classList.add('flex'); }
-            if (fileIdDisplay) fileIdDisplay.textContent = 'file_id: ' + fileId;
-        } catch (e) {
+        if (!f.type.startsWith('image/')) {
+            if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
             const errorMsg = document.getElementById('specRefErrorMsg');
+            if (errorMsg) errorMsg.textContent = '仅支持图片文件';
+            return;
+        }
+        if (f.size > 5 * 1024 * 1024) {
+            if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
+            const errorMsg = document.getElementById('specRefErrorMsg');
+            if (errorMsg) errorMsg.textContent = '图片不能超过 5MB';
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('file', f);
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${getAPIUrl()}/api/workflow/image`);
+        xhr.setRequestHeader('Authorization', `Bearer ${getAuthToken()}`);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && specRefProgress) {
+                specRefProgress.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+            }
+        };
+
+        xhr.onload = function () {
+            if (uploadingEl) uploadingEl.classList.add('hidden');
+            try {
+                const j = JSON.parse(xhr.responseText || '{}');
+                if (xhr.status === 401) {
+                    try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+                    alert('登录已过期，请重新登录');
+                    window.location.href = 'login.html?redirect=studio.html';
+                    return;
+                }
+                if (xhr.status < 200 || xhr.status >= 300) throw new Error(j.error || '上传失败');
+                if (specRefProgress) specRefProgress.style.width = '100%';
+
+                const fileId = j.file_id;
+                const imageUrl = j.image_url || '';
+                task.refFileId = fileId;
+                task.refImageUrl = imageUrl;
+                refImageFileId = fileId;
+                refImageUrl = imageUrl;
+                showToast('参考图上传成功');
+                const fileIdDisplay = document.getElementById('specRefFileIdDisplay');
+                if (successEl) { successEl.classList.remove('hidden'); successEl.classList.add('flex'); }
+                if (fileIdDisplay) fileIdDisplay.textContent = imageUrl ? 'URL: ' + imageUrl.slice(0, 60) + '...' : 'file_id: ' + fileId;
+            } catch (e) {
+                if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
+                const errorMsg = document.getElementById('specRefErrorMsg');
+                if (errorMsg) errorMsg.textContent = e.message || '上传失败';
+            }
+        };
+
+        xhr.onerror = () => {
             if (uploadingEl) uploadingEl.classList.add('hidden');
             if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
-            if (errorMsg) errorMsg.textContent = e.message || '上传失败';
-        }
+            const errorMsg = document.getElementById('specRefErrorMsg');
+            if (errorMsg) errorMsg.textContent = '网络错误，请重试';
+        };
+        xhr.ontimeout = () => {
+            if (uploadingEl) uploadingEl.classList.add('hidden');
+            if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
+            const errorMsg = document.getElementById('specRefErrorMsg');
+            if (errorMsg) errorMsg.textContent = '上传超时，请重试';
+        };
+        xhr.timeout = 120000;
+        xhr.send(fd);
     });
 
     // 移除参考图
@@ -1112,7 +1201,9 @@ function updateSpecRefState(task) {
             const task = taskId ? window.tasksMap.get(taskId) : null;
             if (task) {
                 task.refFileId = '';
+                task.refImageUrl = '';
                 refImageFileId = null;
+                refImageUrl = null;
             }
             const emptyEl = document.getElementById('specRefEmpty');
             const successEl = document.getElementById('specRefSuccess');
@@ -1180,14 +1271,18 @@ async function stepSpec(taskId, userInput) {
 }
 
 // 第二步：生成预览图（可选 detail 参数，用于修改意见）
-async function stepPreview(taskId, spec, detail, refFileId) {
+async function stepPreview(taskId, spec, detail, refFileId, refImageUrl) {
     const API_BASE_URL = getAPIUrl();
     const token = getAuthToken();
     console.log('🚀 调用 stepPreview:', taskId, detail ? '(带修改意见)' : '');
 
     const body = { task_id: taskId, spec };
     if (detail) body.detail = detail;
-    if (refFileId) body.ref_file_id = refFileId;
+    if (refImageUrl) {
+        body.image_url = refImageUrl;
+    } else if (refFileId) {
+        body.ref_file_id = refFileId;
+    }
 
     const res = await fetch(`${API_BASE_URL}/api/workflow/step/preview`, {
         method: 'POST',
@@ -1282,7 +1377,7 @@ window.confirmSpec = async function (taskId, updatedSpec, detail) {
     showLoadingState('正在生成预览图...');
 
     try {
-        const result = await stepPreview(taskId, task.spec, detail, task.refFileId || undefined);
+        const result = await stepPreview(taskId, task.spec, detail, task.refFileId || undefined, task.refImageUrl || undefined);
         console.log('✅ stepPreview 完成:', result);
 
         // 保存 previewPrompt（从工作流返回的 prompt 字段）
@@ -1524,7 +1619,7 @@ window.regeneratePreviewWithDetail = async function (taskId, detail) {
     task.statusChangedAt = Date.now();
     renderTaskProgress();
     try {
-        const result = await stepPreview(taskId, task.spec, detail, task.refFileId || undefined);
+        const result = await stepPreview(taskId, task.spec, detail, task.refFileId || undefined, task.refImageUrl || undefined);
         // 兜底机制：无图片 URL 时展示兜底弹窗
         if (!result.success || !result.image_url) {
             task.status = 'failed';
@@ -1687,7 +1782,8 @@ window.confirmGenerate = function () {
                     name: taskName,
                     params: {
                         user_input: inputValue,
-                        image_file_id: typeof refImageFileId !== 'undefined' ? (refImageFileId || '') : ''
+                        image_file_id: typeof refImageFileId !== 'undefined' ? (refImageFileId || '') : '',
+                        image_url: typeof refImageUrl !== 'undefined' ? (refImageUrl || '') : ''
                     }
                 })
             });
@@ -1718,7 +1814,8 @@ window.confirmGenerate = function () {
                 status: 'spec_confirming',
                 createdAt: Date.now(),
                 statusChangedAt: Date.now(),
-                refFileId: typeof refImageFileId !== 'undefined' ? (refImageFileId || '') : ''
+                refFileId: typeof refImageFileId !== 'undefined' ? (refImageFileId || '') : '',
+                refImageUrl: typeof refImageUrl !== 'undefined' ? (refImageUrl || '') : ''
             };
             tasksMap.set(taskId, taskEntry);
             selectedTaskId = taskId;
@@ -1731,7 +1828,9 @@ window.confirmGenerate = function () {
             // b. 并发执行 stepSpec 和图片上传（如果待上传的文件尚未处理）
             const refFileInput = document.getElementById('refFile');
             const hasPendingFile = refFileInput && refFileInput.files && refFileInput.files[0];
-            let uploadPromise = Promise.resolve(taskEntry.refFileId || null);
+            let uploadPromise = taskEntry.refFileId
+                ? Promise.resolve({ file_id: taskEntry.refFileId, image_url: taskEntry.refImageUrl || '' })
+                : Promise.resolve(null);
             if (hasPendingFile) {
                 const file = refFileInput.files[0];
                 uploadPromise = uploadRefImageAndGetId(file).catch(err => {
@@ -1741,16 +1840,21 @@ window.confirmGenerate = function () {
                 });
             }
 
-            const [specResult, uploadedFileId] = await Promise.all([
+            const [specResult, uploadedFile] = await Promise.all([
                 stepSpec(taskId, inputValue),
                 uploadPromise
             ]);
             console.log('✅ stepSpec 完成:', specResult);
 
-            // 如果上传成功，更新 refFileId
+            // 如果上传成功，更新 refFileId 和 refImageUrl
+            const uploadedFileId = uploadedFile ? uploadedFile.file_id : null;
+            const uploadedImageUrl = uploadedFile ? uploadedFile.image_url : null;
             if (uploadedFileId) {
                 taskEntry.refFileId = uploadedFileId;
                 refImageFileId = uploadedFileId;
+            }
+            if (uploadedImageUrl) {
+                taskEntry.refImageUrl = uploadedImageUrl;
             }
 
             const spec = specResult.spec || specResult.data || specResult;
@@ -2131,6 +2235,7 @@ async function syncTasksFromBackend() {
                 previewFileId: localTask?.previewFileId || '',
                 multiUrl: localTask?.multiUrl || extractUrlFromResult(serverTask.result, 'multi.image_url') || '',
                 refFileId: localTask?.refFileId || '',
+                refImageUrl: localTask?.refImageUrl || '',
                 taskId: serverTask.id,
                 createdAt: serverCreated,
                 updatedAt: serverUpdated,
@@ -2165,22 +2270,28 @@ async function syncTasksFromBackend() {
 // 定时刷新右侧面板 + 超时检查 + 后端同步
 function startTaskProgressPolling() {
     renderTaskProgress();
-    // 动态轮询：有活跃任务时每 5 秒，无活跃任务时每 30 秒
-    let pollingInterval = 5000;
+    // 动态轮询：有活跃任务时每 1 秒，无活跃任务时每 30 秒
+    let pollingInterval = 1000;
     let timer = setInterval(() => {
         renderTaskProgress();
         syncTasksFromBackend();
         // 检查是否有活跃任务（非终态）
         const hasActiveTasks = Array.from(tasksMap.values()).some(t => !TERMINAL_STATES.includes(t.status));
         // 根据是否存在活跃任务动态调整轮询间隔
-        if (hasActiveTasks && pollingInterval !== 5000) {
+        if (hasActiveTasks && pollingInterval !== 1000) {
             clearInterval(timer);
-            pollingInterval = 5000;
-            timer = setInterval(renderTaskProgress, pollingInterval);
+            pollingInterval = 1000;
+            timer = setInterval(() => {
+                renderTaskProgress();
+                syncTasksFromBackend();
+            }, pollingInterval);
         } else if (!hasActiveTasks && pollingInterval !== 30000) {
             clearInterval(timer);
             pollingInterval = 30000;
-            timer = setInterval(renderTaskProgress, pollingInterval);
+            timer = setInterval(() => {
+                renderTaskProgress();
+                syncTasksFromBackend();
+            }, pollingInterval);
         }
     }, pollingInterval);
 
@@ -2192,7 +2303,10 @@ function startTaskProgressPolling() {
             // 页面重新可见时立即同步一次后端数据
             syncTasksFromBackend();
             pollingInterval = Array.from(tasksMap.values()).some(t => !TERMINAL_STATES.includes(t.status)) ? 5000 : 30000;
-            timer = setInterval(renderTaskProgress, pollingInterval);
+            timer = setInterval(() => {
+                renderTaskProgress();
+                syncTasksFromBackend();
+            }, pollingInterval);
         }
     });
 }
@@ -2271,7 +2385,6 @@ window.displayResults = function displayResults(data) {
     // 防抖：同一任务 2 秒内重复调用直接忽略
     const taskId = data.jobId || data.taskId || 'unknown';
     if (_lastDisplayResult.taskId === taskId && Date.now() - _lastDisplayResult.timestamp < 2000) {
-        console.warn('[displayResults] 重复调用已忽略:', taskId.slice(0, 8));
         return;
     }
     _lastDisplayResult = { taskId, timestamp: Date.now() };
@@ -2312,6 +2425,7 @@ window.displayResults = function displayResults(data) {
         resultGrid.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
 
+    // 保存到历史记录（点击左侧任务卡片时也会触发，用于载入卡片任务逻辑）
     saveToHistory({
         prompt: promptInput ? promptInput.value.trim() : (tasksMap.get(taskId)?.prompt || ''),
         title: title,
@@ -2333,11 +2447,16 @@ const ALLOWED_IMAGE_HOSTS = [
     'googleusercontent.com', 'gstatic.com', 'picassousercontent.com',
     'coze.cn', 'coze.com', 'cdn.jsdelivr.net', 'unpkg.com',
     'vercel.app', 'blob.core.windows.net', 's3.amazonaws.com',
-    'miheai.com', 'aliyuncs.com'
+    'miheai.com', 'aliyuncs.com', 'oss-cn-hangzhou.aliyuncs.com',
+    'oss-cn-shenzhen.aliyuncs.com', 'oss-cn-beijing.aliyuncs.com',
+    'oss-cn-shanghai.aliyuncs.com', 'oss-cn-qingdao.aliyuncs.com',
+    'oss-cn-hongkong.aliyuncs.com'
 ];
 
 function sanitizeImageUrl(url) {
     if (!url || typeof url !== 'string') return null;
+    // 先移除反引号等包裹字符
+    url = url.replace(/^`|`$/g, '').replace(/['"\\]/g, '');
     if (!/^https?:\/\//i.test(url)) return null;
     try {
         const parsed = new URL(url);
@@ -2346,9 +2465,8 @@ function sanitizeImageUrl(url) {
             hostname === h || hostname.endsWith('.' + h)
         );
         if (!allowed) return null;
-        const safe = url.replace(/['"`\\]/g, '');
-        if (safe.length > 2048) return null;
-        return safe;
+        if (url.length > 2048) return null;
+        return url;
     } catch (_) {
         return null;
     }
@@ -2362,16 +2480,51 @@ function extractImages(data) {
 
     const directKeys = ['images', 'imageUrls', 'conceptImages', 'pictures', 'photos'];
     for (const k of directKeys) {
-        if (Array.isArray(data[k])) found.push(...data[k].filter(x => typeof x === 'string'));
+        if (Array.isArray(data[k])) {
+            data[k].forEach(x => {
+                if (typeof x === 'string') {
+                    const cleaned = sanitizeImageUrl(x);
+                    if (cleaned) found.push(cleaned);
+                }
+            });
+        }
+    }
+
+    // 单张图片 URL
+    if (typeof data.image_url === 'string') {
+        const cleaned = sanitizeImageUrl(data.image_url);
+        if (cleaned) found.push(cleaned);
+    }
+    if (typeof data.previewUrl === 'string') {
+        const cleaned = sanitizeImageUrl(data.previewUrl);
+        if (cleaned) found.push(cleaned);
+    }
+    if (typeof data.multiUrl === 'string') {
+        const cleaned = sanitizeImageUrl(data.multiUrl);
+        if (cleaned) found.push(cleaned);
     }
 
     if (typeof data.outData === 'string') {
         try {
             const o = JSON.parse(data.outData);
             for (const k of directKeys) {
-                if (Array.isArray(o[k])) found.push(...o[k].filter(x => typeof x === 'string'));
+                if (Array.isArray(o[k])) {
+                    o[k].forEach(x => {
+                        if (typeof x === 'string') {
+                            const cleaned = sanitizeImageUrl(x);
+                            if (cleaned) found.push(cleaned);
+                        }
+                    });
+                }
             }
-            if (typeof o.image === 'string') found.push(o.image);
+            if (typeof o.image === 'string') {
+                const cleaned = sanitizeImageUrl(o.image);
+                if (cleaned) found.push(cleaned);
+            }
+            if (typeof o.image_url === 'string') {
+                const cleaned = sanitizeImageUrl(o.image_url);
+                if (cleaned) found.push(cleaned);
+            }
         } catch (_) {}
     }
 
@@ -2386,11 +2539,18 @@ function extractImages(data) {
             data.infoJson.extracted_infojson && data.infoJson.extracted_infojson.imageUrls,
         ];
         for (const c of candidates) {
-            if (Array.isArray(c)) found.push(...c.filter(x => typeof x === 'string'));
+            if (Array.isArray(c)) {
+                c.forEach(x => {
+                    if (typeof x === 'string') {
+                        const cleaned = sanitizeImageUrl(x);
+                        if (cleaned) found.push(cleaned);
+                    }
+                });
+            }
         }
     }
 
-    const unique = [...new Set(found.map(sanitizeImageUrl).filter(Boolean))];
+    const unique = [...new Set(found.filter(Boolean))];
     return unique;
 }
 
@@ -2657,6 +2817,8 @@ function showToast(msg, type = 'success') {
 // -----------------------------
 function openModalWithUrl(url) {
     modalImage.style.backgroundImage = `url('${encodeURI(url)}')`;
+    imageModal.style.display = 'flex';
+    imageModal.style.opacity = '1';
     imageModal.classList.remove('hidden');
     imageModal.classList.add('flex');
     setTimeout(() => imageModal.classList.remove('opacity-0'), 10);
@@ -2664,7 +2826,8 @@ function openModalWithUrl(url) {
 }
 
 window.closeModal = function () {
-    imageModal.classList.add('opacity-0');
+    imageModal.style.opacity = '0';
+    imageModal.style.display = 'none';
     setTimeout(() => {
         imageModal.classList.add('hidden');
         imageModal.classList.remove('flex');
