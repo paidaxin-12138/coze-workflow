@@ -56,8 +56,10 @@ export const CONFIG = {
 // ===== 启动时强制校验必填变量 =====
 const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'KM_COZE_TOKEN'];
 for (const key of REQUIRED_ENV) {
-    if (process.env[key] === undefined || process.env[key] === null) {
-        console.error(`❌ 致命错误: 环境变量 ${key} 未设置，请检查 .env 文件`);
+    const val = process.env[key];
+    // 空字符串（如 SUPABASE_URL=）同样视为未配置，避免漏检后运行时 500
+    if (val === undefined || val === null || (typeof val === 'string' && val.trim() === '')) {
+        console.error(`❌ 致命错误: 环境变量 ${key} 未设置或为空，请检查 .env 文件`);
         process.exit(1);
     }
 }

@@ -246,7 +246,20 @@ function truncateForDisplay(s, max = 220) {
 // -----------------------------
 // 4. 历史记录辅助
 // -----------------------------
+// 防止同一内容短时间内重复 POST 后端
+// 去重键：优先用 taskId（每个任务独立单位，内容相同也不会互相误判），无 taskId 时回退到 prompt + imageUrls
+const _savedHistoryKeys = new Set();
+function historyKey(entry) {
+    if (entry.taskId) return 'task:' + entry.taskId;
+    return JSON.stringify({ p: entry.prompt || '', i: entry.imageUrls || [] });
+}
+
 async function saveToHistory(entry) {
+    // 前端去重：同一任务或同内容只保存一次
+    const key = historyKey(entry);
+    if (_savedHistoryKeys.has(key)) return;
+    _savedHistoryKeys.add(key);
+
     try {
         const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
         const arr = raw ? JSON.parse(raw) : [];
@@ -259,7 +272,8 @@ async function saveToHistory(entry) {
             docId: entry.docId || '',
             status: entry.status || 'completed',
             createdAt: new Date().toISOString(),
-            options: entry.options || {}
+            options: entry.options || {},
+            taskId: entry.taskId || null
         });
         const trimmed = arr.slice(0, 50);
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
@@ -276,7 +290,8 @@ async function saveToHistory(entry) {
         imageUrls: entry.imageUrls || [],
         docId: entry.docId || '',
         status: entry.status || 'completed',
-        options: entry.options || {}
+        options: entry.options || {},
+        taskId: entry.taskId || null
     });
     const headers = {
         'Content-Type': 'application/json',
@@ -1569,8 +1584,23 @@ window.confirmPreview = async function (taskId) {
     }
 };
 
+// 从后端重新拉取任务结果（确保拿到持久化的 preview / multi 图片）
+async function fetchTaskResultFromBackend(taskId) {
+    try {
+        const token = getAuthToken();
+        if (!token) return null;
+        const res = await fetch(getAPIUrl() + '/api/workflow', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const t = (data.tasks || []).find(x => x.id === taskId);
+        return t ? (t.result || {}) : null;
+    } catch (_) { return null; }
+}
+
 // 确认多角度满意 → 完成
-window.confirmMulti = function (taskId) {
+window.confirmMulti = async function (taskId) {
     console.log('✅ confirmMulti 被调用，taskId:', taskId);
     const task = tasksMap.get(taskId);
     if (!task) {
@@ -1591,11 +1621,25 @@ window.confirmMulti = function (taskId) {
     // 3. 重置防抖时间戳，确保 displayResults 能正常执行
     _lastDisplayResult = { taskId: null, timestamp: 0 };
 
-    // 4. 展示最终结果
-    const images = [task.previewUrl, task.multiUrl].filter(Boolean);
+    // 4. 从后端拉取任务结果，兜底多视角图，避免仅依赖内存字段导致多视角图丢失
+    const backendResult = await fetchTaskResultFromBackend(taskId);
+    const previewUrl = task.previewUrl || (backendResult?.preview?.image_url) || '';
+    const multiUrl = task.multiUrl || (backendResult?.multi?.image_url) || '';
+    const multiImages = (Array.isArray(backendResult?.multi_angle_images) && backendResult.multi_angle_images.length > 0)
+        ? backendResult.multi_angle_images
+        : [];
+
+    // 汇总所有图片：预览图 + 多视角图，去重后展示与保存历史
+    const images = [...new Set([previewUrl, multiUrl, ...multiImages].filter(Boolean))];
+    console.log('[confirmMulti] previewUrl:', previewUrl, '| multiUrl:', multiUrl, '| multiImages:', multiImages, '| images:', images);
+
+    // 5. 展示最终结果（确保 preview 和多视角图都传入）
     window.displayResults({
         success: true,
         images,
+        image_url: previewUrl || '',
+        previewUrl: previewUrl || '',
+        multiUrl: multiUrl || '',
         message: '生成完成！',
         jobId: taskId,
         infoJson: { timestamp: new Date().toISOString() }
@@ -1878,6 +1922,9 @@ window.confirmGenerate = function () {
             if (classifyError(err) === ERR_UNAUTHORIZED) {
                 showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
                 setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+            } else if (/过多任务|请求过于频繁|429|请等待完成后再试/.test(err.message || '')) {
+                // 并发已满：用弹窗明确提示，而不是在页面内联报错，用户知道需等待
+                showErrorDialog('稍后再试', '当前同时生成的创意已满，请等待其中一个完成后，再开启新的构思 🙏');
             } else {
                 showErrorInline(getFriendlyErrorByCode(classifyError(err)), err.message);
             }
@@ -2122,7 +2169,6 @@ function selectTask(taskId) {
     const errorState = document.getElementById('errorState');
 
     if (initialState) initialState.style.display = 'none';
-    if (resultGrid) { resultGrid.style.display = 'none'; resultGrid.classList.add('hidden', 'opacity-0'); }
     if (loadingState) { loadingState.style.display = 'none'; loadingState.classList.add('hidden', 'opacity-0'); }
     if (errorState) { errorState.style.display = 'none'; errorState.style.opacity = '0'; }
 
@@ -2144,6 +2190,7 @@ function selectTask(taskId) {
                 image_url: task.previewUrl || '',
                 message: '生成完成！',
                 jobId: taskId,
+                persist: false, // 仅展示已有结果，不重复保存历史
                 infoJson: { timestamp: new Date().toISOString() }
             });
         } else {
@@ -2159,6 +2206,7 @@ function selectTask(taskId) {
                 image_url: task.previewUrl || '',
                 message: '多角度图已生成',
                 jobId: taskId,
+                persist: false, // 仅展示已有结果，不重复保存历史
                 infoJson: { timestamp: new Date().toISOString() }
             });
         }
@@ -2364,7 +2412,7 @@ function checkStaleTasks() {
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + token
                         },
-                        body: JSON.stringify({ status: 'cancelled', error: '无应答超时' })
+                        body: JSON.stringify({ status: 'no_response', error: '无应答超时' })
                     });
                 } catch (_) {}
             })();
@@ -2409,7 +2457,8 @@ window.displayResults = function displayResults(data) {
 
     renderRawError(data);
 
-    const images = extractImages(data);
+    const images = [...new Set(extractImages(data).map(u => u ? u.replace(/[`'"]/g, '').trim() : u).filter(Boolean))];
+    console.log('[displayResults] extractImages 结果:', images, '| data.images:', data.images, '| data.multiUrl:', data.multiUrl);
     renderImages(images, data);
 
     let downloadUrl = data.downloadUrl || (data.infoJson && data.infoJson.downloadUrl);
@@ -2420,24 +2469,33 @@ window.displayResults = function displayResults(data) {
 
     resultGrid.style.display = 'block';
     resultGrid.classList.add('result-fade-in');
-    requestAnimationFrame(() => resultGrid.classList.remove('hidden', 'opacity-0'));
+    resultGrid.classList.remove('hidden', 'opacity-0');
+    requestAnimationFrame(() => {
+        resultGrid.classList.remove('hidden', 'opacity-0');
+    });
     setTimeout(() => {
         resultGrid.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
 
-    // 保存到历史记录（点击左侧任务卡片时也会触发，用于载入卡片任务逻辑）
-    saveToHistory({
-        prompt: promptInput ? promptInput.value.trim() : (tasksMap.get(taskId)?.prompt || ''),
-        title: title,
-        imageUrls: images,
-        docId: downloadUrl || '',
-        status: 'completed',
-        options: {
-            fragrances: collectSelectedOptions('fragranceTags'),
-            moods: collectSelectedOptions('moodTags'),
-            style: collectSelectedOptions('styleSelect', true)
-        }
-    });
+    console.log('[displayResults] 完成 - resultGrid 应可见');
+
+    // 仅在首次生成完成（confirmMulti）时保存历史；点击任务卡片重新展示时跳过
+    if (data.persist !== false) {
+        console.log('[displayResults] 准备保存历史, imageUrls:', images, '| previewUrl:', data.previewUrl, '| multiUrl:', data.multiUrl);
+        saveToHistory({
+            taskId: data.jobId || data.taskId || taskId,
+            prompt: promptInput ? promptInput.value.trim() : (tasksMap.get(taskId)?.prompt || ''),
+            title: title,
+            imageUrls: images,
+            docId: downloadUrl || '',
+            status: 'completed',
+            options: {
+                fragrances: collectSelectedOptions('fragranceTags'),
+                moods: collectSelectedOptions('moodTags'),
+                style: collectSelectedOptions('styleSelect', true)
+            }
+        });
+    }
 };
 
 // -----------------------------
@@ -2447,7 +2505,7 @@ const ALLOWED_IMAGE_HOSTS = [
     'googleusercontent.com', 'gstatic.com', 'picassousercontent.com',
     'coze.cn', 'coze.com', 'cdn.jsdelivr.net', 'unpkg.com',
     'vercel.app', 'blob.core.windows.net', 's3.amazonaws.com',
-    'miheai.com', 'aliyuncs.com', 'oss-cn-hangzhou.aliyuncs.com',
+    'miheai.com', 'oss.miheai.com', 'aliyuncs.com', 'oss-cn-hangzhou.aliyuncs.com',
     'oss-cn-shenzhen.aliyuncs.com', 'oss-cn-beijing.aliyuncs.com',
     'oss-cn-shanghai.aliyuncs.com', 'oss-cn-qingdao.aliyuncs.com',
     'oss-cn-hongkong.aliyuncs.com'
@@ -2455,8 +2513,9 @@ const ALLOWED_IMAGE_HOSTS = [
 
 function sanitizeImageUrl(url) {
     if (!url || typeof url !== 'string') return null;
-    // 先移除反引号等包裹字符
-    url = url.replace(/^`|`$/g, '').replace(/['"\\]/g, '');
+    // 先移除反引号等包裹字符（使用更彻底的方式）
+    const raw = url;
+    url = url.replace(/[`'"]/g, '').trim();
     if (!/^https?:\/\//i.test(url)) return null;
     try {
         const parsed = new URL(url);
@@ -2478,12 +2537,15 @@ function sanitizeImageUrl(url) {
 function extractImages(data) {
     const found = [];
 
+    // 预处理：移除反引号/引号包裹
+    const cleanStr = (s) => (typeof s === 'string') ? s.replace(/[`'"]/g, '').trim() : s;
+
     const directKeys = ['images', 'imageUrls', 'conceptImages', 'pictures', 'photos'];
     for (const k of directKeys) {
         if (Array.isArray(data[k])) {
             data[k].forEach(x => {
                 if (typeof x === 'string') {
-                    const cleaned = sanitizeImageUrl(x);
+                    const cleaned = sanitizeImageUrl(cleanStr(x));
                     if (cleaned) found.push(cleaned);
                 }
             });
@@ -2492,15 +2554,15 @@ function extractImages(data) {
 
     // 单张图片 URL
     if (typeof data.image_url === 'string') {
-        const cleaned = sanitizeImageUrl(data.image_url);
+        const cleaned = sanitizeImageUrl(cleanStr(data.image_url));
         if (cleaned) found.push(cleaned);
     }
     if (typeof data.previewUrl === 'string') {
-        const cleaned = sanitizeImageUrl(data.previewUrl);
+        const cleaned = sanitizeImageUrl(cleanStr(data.previewUrl));
         if (cleaned) found.push(cleaned);
     }
     if (typeof data.multiUrl === 'string') {
-        const cleaned = sanitizeImageUrl(data.multiUrl);
+        const cleaned = sanitizeImageUrl(cleanStr(data.multiUrl));
         if (cleaned) found.push(cleaned);
     }
 
@@ -2511,18 +2573,18 @@ function extractImages(data) {
                 if (Array.isArray(o[k])) {
                     o[k].forEach(x => {
                         if (typeof x === 'string') {
-                            const cleaned = sanitizeImageUrl(x);
+                            const cleaned = sanitizeImageUrl(cleanStr(x));
                             if (cleaned) found.push(cleaned);
                         }
                     });
                 }
             }
             if (typeof o.image === 'string') {
-                const cleaned = sanitizeImageUrl(o.image);
+                const cleaned = sanitizeImageUrl(cleanStr(o.image));
                 if (cleaned) found.push(cleaned);
             }
             if (typeof o.image_url === 'string') {
-                const cleaned = sanitizeImageUrl(o.image_url);
+                const cleaned = sanitizeImageUrl(cleanStr(o.image_url));
                 if (cleaned) found.push(cleaned);
             }
         } catch (_) {}
@@ -2542,7 +2604,7 @@ function extractImages(data) {
             if (Array.isArray(c)) {
                 c.forEach(x => {
                     if (typeof x === 'string') {
-                        const cleaned = sanitizeImageUrl(x);
+                        const cleaned = sanitizeImageUrl(cleanStr(x));
                         if (cleaned) found.push(cleaned);
                     }
                 });
@@ -2756,6 +2818,32 @@ function getFriendlyErrorMessage(errMsg, errCode) {
         }
     }
     return '生成失败了，请稍后重试 🙏';
+}
+
+// 通用错误弹窗：用于并发已满等需要明确打断的场景
+function showErrorDialog(title = '提示', message = '') {
+    const overlay = document.createElement('div');
+    overlay.id = 'kmErrorDialogOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(28,25,23,0.5);opacity:1;';
+    const box = document.createElement('div');
+    box.style.cssText = 'width:min(420px,90vw);background:#fff;border-radius:12px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,0.2);font-family:inherit;';
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:12px;color:#3b2f2b;';
+    const msgEl = document.createElement('div');
+    msgEl.style.cssText = 'font-size:14px;line-height:1.6;color:#6b5b53;margin-bottom:20px;white-space:pre-wrap;';
+    const btn = document.createElement('button');
+    btn.textContent = '知道了';
+    btn.style.cssText = 'width:100%;padding:11px 0;border:none;border-radius:8px;background:#8a3b2a;color:#fff;font-size:14px;cursor:pointer;';
+    btn.onclick = () => overlay.remove();
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    box.appendChild(titleEl);
+    box.appendChild(msgEl);
+    box.appendChild(btn);
+    overlay.appendChild(box);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    return overlay;
 }
 
 function showErrorInline(msg, errorDetail) {

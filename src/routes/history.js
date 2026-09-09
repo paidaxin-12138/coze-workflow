@@ -21,6 +21,12 @@ function getOSSKeyFromUrl(url) {
  */
 async function deleteOSSFiles(urls) {
     if (!urls || urls.length === 0) return;
+    const requiredEnv = ['OSS_REGION', 'OSS_ACCESS_KEY_ID', 'OSS_ACCESS_KEY_SECRET', 'OSS_BUCKET'];
+    const missing = requiredEnv.filter(k => !process.env[k]);
+    if (missing.length > 0) {
+        console.error(`[OSS] 配置缺失: ${missing.join(', ')}，无法删除历史记录文件`);
+        return;
+    }
     const client = new OSS({
         region: process.env.OSS_REGION,
         accessKeyId: process.env.OSS_ACCESS_KEY_ID,
@@ -63,7 +69,7 @@ router.get('/', requireAuth, (req, res) => {
 
 // POST /api/history
 router.post('/', requireAuth, (req, res) => {
-    let { prompt, style, title, images, imageUrls, brochure_url, docId, options, tags } = req.body;
+    let { prompt, style, title, images, imageUrls, brochure_url, docId, options, tags, taskId } = req.body;
     if (!prompt || !String(prompt).trim()) {
         // 缺少 prompt 时使用默认占位，避免前端空数据报 400
         prompt = '（无描述）';
@@ -73,7 +79,8 @@ router.post('/', requireAuth, (req, res) => {
         title: title || style,
         imageUrls: imageUrls || images,
         docId: docId || brochure_url,
-        options: { ...options, tags }
+        options: { ...options, tags },
+        taskId
     });
     res.json({ success: true, id: item ? item.id : null });
 });

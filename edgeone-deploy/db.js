@@ -5,7 +5,17 @@ import crypto from 'crypto';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
 const SUPABASE_KEY = process.env.SUPABASE_ANON_KEY || '';
-const supabase = SUPABASE_URL ? createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
+// 启动时校验 Supabase 配置，缺失/为空时报出明确错误，避免 supabase 为 null 后静默失败
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+    const missing = [];
+    if (!SUPABASE_URL) missing.push('SUPABASE_URL');
+    if (!SUPABASE_KEY) missing.push('SUPABASE_ANON_KEY');
+    console.error(`❌ 致命错误: 环境变量 ${missing.join(', ')} 未设置或为空，请检查 .env 文件`);
+    process.exit(1);
+}
+
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // ===== 兼容 better-sqlite3 的 prepare API (占位，实际不可用) =====
 class Statement {
@@ -182,8 +192,13 @@ export async function deleteTask(user_id, id) {
     return !error;
 }
 
-export async function countProcessingTasks(user_id) {
-    const { count } = await supabase.from('tasks').select('*', { count: 'exact', head: true }).eq('user_id', user_id).eq('status', 'processing');
+// 返回"正在生成/占用额度"的任务数：仅统计流转中的状态。
+// 已就绪待用户确认的状态（spec_ready/preview_ready/multi_ready）不占额度，
+// 避免生成完成但未点击"确认完毕"的任务长期占用并发配额导致新任务无法创建。
+export async function countNonTerminalTasks(user_id) {
+    const { count } = await supabase.from('tasks').select('*', { count: 'exact', head: true })
+        .eq('user_id', user_id)
+        .in('status', ['queued', 'processing', 'spec_confirming', 'generating_preview', 'generating_multi', 'waiting_confirm']);
     return count || 0;
 }
 

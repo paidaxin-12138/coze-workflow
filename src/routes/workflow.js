@@ -4,11 +4,12 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-import { Router, raw as rawBody } from 'express';
+import { Router } from 'express';
+import multer from 'multer';
 import { CONFIG } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
-    createTask, getTaskById, listTasks, updateTask, deleteTask, clearTasks, countProcessingTasks
+    createTask, getTaskById, listTasks, updateTask, deleteTask, clearTasks, countNonTerminalTasks
 } from '../../db.js';
 import { extractImageUrls } from '../coze/sse.js';
 import { uploadToCoze, callCozeFallback, getCozeFileUrl } from '../coze/client.js';
@@ -63,7 +64,7 @@ router.post('/', requireAuth, (req, res) => {
         return res.status(400).json({ success: false, error: '请输入设计概念描述' });
 
     // 检查并发任务数
-    const processingCount = countProcessingTasks(req.user.id);
+    const processingCount = countNonTerminalTasks(req.user.id);
     if (processingCount >= CONFIG.KM_MAX_CONCURRENT) {
         return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
     }
@@ -265,6 +266,12 @@ async function deleteOSSFiles(urls) {
  */
 async function saveImageToOSS(sourceUrl, prefix = 'images') {
     if (!sourceUrl) return sourceUrl;
+    const requiredEnv = ['OSS_REGION', 'OSS_ACCESS_KEY_ID', 'OSS_ACCESS_KEY_SECRET', 'OSS_BUCKET'];
+    const missing = requiredEnv.filter(k => !process.env[k]);
+    if (missing.length > 0) {
+        console.error(`[OSS] 配置缺失: ${missing.join(', ')}，无法保存图片，降级返回原 URL`);
+        return sourceUrl;
+    }
     const cleanUrl = String(sourceUrl).replace(/^`|`$/g, '');
     // 下载图片
     const resp = await fetch(cleanUrl);
@@ -307,7 +314,7 @@ router.post('/step/spec', requireAuth, async (req, res) => {
             return res.status(400).json({ success: false, error: '缺少设计概念描述' });
 
         // 检查并发任务数
-        const processingCount = countProcessingTasks(req.user.id);
+        const processingCount = countNonTerminalTasks(req.user.id);
         if (processingCount >= CONFIG.KM_MAX_CONCURRENT) {
             return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
         }
@@ -378,7 +385,7 @@ router.post('/step/preview', requireAuth, async (req, res) => {
         if (!spec) return res.status(400).json({ success: false, error: '缺少设计规范数据' });
 
         // 检查并发任务数
-        const processingCount = countProcessingTasks(req.user.id);
+        const processingCount = countNonTerminalTasks(req.user.id);
         if (processingCount >= CONFIG.KM_MAX_CONCURRENT) {
             return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
         }
@@ -460,6 +467,14 @@ router.post('/step/preview', requireAuth, async (req, res) => {
             currentResult.preview = { error: '工作流未返回图片', spec };
             updateTask(task.id, { result: JSON.stringify(currentResult), status: 'failed', error: '工作流未返回图片' });
             return res.json({ success: false, image_url: null, error: '工作流未返回图片，请检查工作流配置或稍后重试' });
+        }
+
+        // 保存预览图到 OSS（获取持久化 URL）
+        try {
+            const ossUrl = await saveImageToOSS(imageUrl, 'preview');
+            if (ossUrl) imageUrl = ossUrl;
+        } catch (ossErr) {
+            console.warn('[step/preview] 保存到 OSS 失败，降级使用原 URL:', ossErr.message);
         }
 
         // 将图片上传到 Coze 获取 file_id（用于下一步作为视觉参考）
@@ -662,7 +677,7 @@ router.post('/step/multi', requireAuth, async (req, res) => {
         if (!task_id) return res.status(400).json({ success: false, error: '缺少 task_id' });
 
         // 检查并发任务数
-        const processingCount = countProcessingTasks(req.user.id);
+        const processingCount = countNonTerminalTasks(req.user.id);
         if (processingCount >= CONFIG.KM_MAX_CONCURRENT) {
             return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
         }
@@ -733,6 +748,18 @@ router.post('/step/multi', requireAuth, async (req, res) => {
             const urls = extractImageUrls(data);
             if (urls.length > 0) imageUrl = urls[0];
         }
+        // 清理 URL 周围的反引号
+        if (imageUrl) imageUrl = imageUrl.replace(/^`|`$/g, '');
+
+        // 保存多角度图到 OSS（获取持久化 URL）
+        if (imageUrl) {
+            try {
+                const ossUrl = await saveImageToOSS(imageUrl, 'multi');
+                if (ossUrl) imageUrl = ossUrl;
+            } catch (ossErr) {
+                console.warn('[step/multi] 保存到 OSS 失败，降级使用原 URL:', ossErr.message);
+            }
+        }
 
         // 保存到 task.result（task.result 已是解析后的对象）
         const currentResult = (task.result && typeof task.result === 'object') ? { ...task.result } : {};
@@ -798,50 +825,47 @@ router.post('/step/rollback', requireAuth, async (req, res) => {
 
 // ========== 参考图上传代理（安全加固版）==========
 
+// multer 内存存储接管 multipart/form-data 解析（替代原手动 boundary 解析，健壮且防绕过）
+const IMAGE_MAX_SIZE = 5 * 1024 * 1024; // 5MB
+const imageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: IMAGE_MAX_SIZE, files: 1 },
+    fileFilter: (req, file, cb) => {
+        // 前置按声明 MIME 做基础过滤，真正的白名单由 file-type 文件头校验把关
+        if (!/^image\//.test(file.mimetype)) {
+            return cb(null, false);
+        }
+        cb(null, true);
+    },
+});
+
 router.post('/image', requireAuth, (req, res, next) => {
     // 1️⃣ 检查 Content-Length（防止超大文件）
     const contentLength = parseInt(req.headers['content-length'] || '0', 10);
-    const MAX_SIZE = 5 * 1024 * 1024; // 5MB
-    if (contentLength > MAX_SIZE) {
+    if (contentLength > IMAGE_MAX_SIZE) {
         return res.status(413).json({ success: false, error: '图片大小不能超过 5MB' });
     }
     next();
-}, rawBody({ type: 'multipart/form-data', limit: '5mb' }), async (req, res) => {
-    try {
-        const contentType = req.headers['content-type'] || '';
-        const bMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
-        if (!bMatch || !Buffer.isBuffer(req.body))
-            return res.status(400).json({ success: false, error: '无效的 multipart 请求' });
-
-        const boundary = '--' + (bMatch[1] || bMatch[2]).trim();
-        const bBuf = Buffer.from(boundary);
-        let file = null;
-        let start = req.body.indexOf(bBuf);
-        while (start >= 0 && !file) {
-            const next = req.body.indexOf(bBuf, start + bBuf.length);
-            if (next < 0) break;
-            let part = req.body.slice(start + bBuf.length, next);
-            if (part.slice(0, 2).toString() === '\r\n') part = part.slice(2);
-            if (part.slice(-2).toString() === '\r\n') part = part.slice(0, -2);
-            const headerEnd = part.indexOf('\r\n\r\n');
-            if (headerEnd >= 0) {
-                const headers = part.slice(0, headerEnd).toString('utf-8');
-                const fileM = /filename="([^"]*)"/i.exec(headers);
-                if (fileM) {
-                    const typeM = /content-type:\s*([^\r\n]+)/i.exec(headers);
-                    file = {
-                        filename: fileM[1] || 'upload.png',
-                        contentType: typeM ? typeM[1].trim() : 'application/octet-stream',
-                        data: part.slice(headerEnd + 4)
-                    };
-                }
+}, (req, res, next) => {
+    imageUpload.single('file')(req, res, (uploadErr) => {
+        if (uploadErr) {
+            if (uploadErr.code === 'LIMIT_FILE_SIZE') {
+                return res.status(413).json({ success: false, error: '图片大小不能超过 5MB' });
             }
-            start = next;
+            return res.status(400).json({ success: false, error: '无效的 multipart 请求' });
         }
-        if (!file || file.data.length === 0)
+        next();
+    });
+}, async (req, res) => {
+    try {
+        if (!req.file || req.file.buffer.length === 0) {
             return res.status(400).json({ success: false, error: '未找到上传的图片文件（字段名需为 file）' });
-        if (!/^image\//.test(file.contentType))
-            return res.status(400).json({ success: false, error: '仅支持图片文件' });
+        }
+        const file = {
+            filename: req.file.originalname || 'upload.png',
+            contentType: req.file.mimetype || 'application/octet-stream',
+            data: req.file.buffer
+        };
 
         // 2️⃣ file-type 文件头二次校验（严格白名单，移除 GIF）
         const type = await fileTypeFromBuffer(file.data);

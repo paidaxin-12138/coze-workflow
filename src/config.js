@@ -54,12 +54,20 @@ export const CONFIG = {
 };
 
 // ===== 启动时强制校验必填变量 =====
-const REQUIRED_ENV = ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'KM_COZE_TOKEN'];
+// 主项目基于 SQLite（better-sqlite3），SUPABASE_URL / SUPABASE_ANON_KEY 仅在独立的 edgeone-deploy（Supabase 版）中使用，
+// 本服务不依赖 Supabase，因此不再强制校验，避免未配置时启动失败。
+const REQUIRED_ENV = ['KM_COZE_TOKEN'];
 for (const key of REQUIRED_ENV) {
     if (process.env[key] === undefined || process.env[key] === null) {
         console.error(`❌ 致命错误: 环境变量 ${key} 未设置，请检查 .env 文件`);
         process.exit(1);
     }
+}
+// 若仍配置了 SUPABASE 变量，仅作提示，不影响启动
+if (!process.env.SUPABASE_URL && !process.env.SUPABASE_ANON_KEY) {
+    console.log('ℹ️ 未配置 SUPABASE 变量（主项目使用 SQLite，不影响功能）');
+} else if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+    console.warn('⚠️ SUPABASE_URL 和 SUPABASE_ANON_KEY 需成对配置，缺一项将被忽略（主项目使用 SQLite）');
 }
 
 // 校验三步工作流 ID

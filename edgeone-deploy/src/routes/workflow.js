@@ -3,7 +3,7 @@ import { Router, raw as rawBody } from 'express';
 import { CONFIG } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import {
-    createTask, getTaskById, listTasks, updateTask, deleteTask, clearTasks
+    createTask, getTaskById, listTasks, updateTask, deleteTask, clearTasks, countNonTerminalTasks
 } from '../../db.js';
 import { extractImageUrls } from '../coze/sse.js';
 import { uploadToCoze, callCozeFallback } from '../coze/client.js';
@@ -17,12 +17,19 @@ router.get('/', requireAuth, (req, res) => {
     res.json({ success: true, tasks: listTasks(req.user.id) });
 });
 
-router.post('/', requireAuth, (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
     const { name, params } = req.body || {};
     if (!name || !String(name).trim()) return res.status(400).json({ success: false, error: '任务名称为必填项' });
     const p = params || {};
     if (!p.user_input || !String(p.user_input).trim())
         return res.status(400).json({ success: false, error: '请输入设计概念描述' });
+
+    // 并发控制：统计所有非终态任务（含 queued/processing/waiting_confirm 等）
+    const nonTerminalCount = await countNonTerminalTasks(req.user.id);
+    if (nonTerminalCount >= CONFIG.KM_MAX_CONCURRENT) {
+        return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
+    }
+
     const task = createTask(req.user.id, {
         name: String(name).trim(),
         params: { user_input: String(p.user_input).trim(), image_file_id: p.image_file_id || '' }
@@ -136,6 +143,12 @@ router.post('/step/spec', requireAuth, async (req, res) => {
         if (!user_input || !String(user_input).trim())
             return res.status(400).json({ success: false, error: '缺少设计概念描述' });
 
+        // 并发控制：统计所有非终态任务
+        const nonTerminalCount = await countNonTerminalTasks(req.user.id);
+        if (nonTerminalCount >= CONFIG.KM_MAX_CONCURRENT) {
+            return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
+        }
+
         const task = getTaskById(req.user.id, task_id);
         if (!task) return res.status(404).json({ success: false, error: '任务不存在' });
 
@@ -200,6 +213,12 @@ router.post('/step/preview', requireAuth, async (req, res) => {
         const { task_id, spec, detail, ref_file_id } = req.body || {};
         if (!task_id) return res.status(400).json({ success: false, error: '缺少 task_id' });
         if (!spec) return res.status(400).json({ success: false, error: '缺少设计规范数据' });
+
+        // 并发控制：统计所有非终态任务
+        const nonTerminalCount = await countNonTerminalTasks(req.user.id);
+        if (nonTerminalCount >= CONFIG.KM_MAX_CONCURRENT) {
+            return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
+        }
 
         const task = getTaskById(req.user.id, task_id);
         if (!task) return res.status(404).json({ success: false, error: '任务不存在' });
@@ -459,6 +478,12 @@ router.post('/step/multi', requireAuth, async (req, res) => {
     try {
         const { task_id, reference_image_url } = req.body || {};
         if (!task_id) return res.status(400).json({ success: false, error: '缺少 task_id' });
+
+        // 并发控制：统计所有非终态任务
+        const nonTerminalCount = await countNonTerminalTasks(req.user.id);
+        if (nonTerminalCount >= CONFIG.KM_MAX_CONCURRENT) {
+            return res.status(429).json({ success: false, error: '当前有过多任务正在处理，请等待完成后再试' });
+        }
 
         const task = getTaskById(req.user.id, task_id);
         if (!task) return res.status(404).json({ success: false, error: '任务不存在' });

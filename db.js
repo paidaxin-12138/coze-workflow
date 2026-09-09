@@ -44,6 +44,7 @@ db.exec(`
         user_id INTEGER NOT NULL,
         prompt TEXT, title TEXT, thumbnail TEXT,
         image_urls TEXT, doc_id TEXT, status TEXT, options TEXT,
+        task_id TEXT,
         created_at TEXT NOT NULL DEFAULT (datetime('now')),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
@@ -74,6 +75,7 @@ const migrations = [
     "ALTER TABLE users ADD COLUMN is_disabled INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN gen_count INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE users ADD COLUMN last_gen_at TEXT",
+    "ALTER TABLE history ADD COLUMN task_id TEXT",
 ];
 for (const sql of migrations) {
     try { db.exec(sql); } catch (_) {}
@@ -153,11 +155,26 @@ export function incrementGenCount(user_id) {
 }
 
 export function addHistory(user_id, entry) {
+    const taskId = entry.taskId || null;
+    const imgKey = JSON.stringify(entry.imageUrls || []);
+
+    let dup = null;
+    if (taskId) {
+        // 有任务 ID 时，以任务为独立单位去重：同一任务只保留一条记录
+        dup = db.prepare('SELECT id FROM history WHERE user_id = ? AND task_id = ? ORDER BY created_at DESC LIMIT 1').get(user_id, taskId);
+    } else {
+        // 无任务 ID（外部/老调用），回退到按 prompt + imageUrls 去重
+        dup = db.prepare('SELECT id FROM history WHERE user_id = ? AND prompt IS ? AND image_urls = ? ORDER BY created_at DESC LIMIT 1').get(
+            user_id, entry.prompt || null, imgKey
+        );
+    }
+    if (dup) return getHistoryById(user_id, dup.id);
+
     const id = entry.id || 'pc_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-    db.prepare('INSERT INTO history (id, user_id, prompt, title, thumbnail, image_urls, doc_id, status, options) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    db.prepare('INSERT INTO history (id, user_id, prompt, title, thumbnail, image_urls, doc_id, status, options, task_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .run(id, user_id, entry.prompt || null, entry.title || null, entry.thumbnail || null,
-            JSON.stringify(entry.imageUrls || []), entry.docId || null, entry.status || 'completed',
-            JSON.stringify(entry.options || {}));
+            imgKey, entry.docId || null, entry.status || 'completed',
+            JSON.stringify(entry.options || {}), taskId);
     incrementGenCount(user_id);
     return getHistoryById(user_id, id);
 }
@@ -192,6 +209,7 @@ function parseHistoryRow(row) {
         docId: row.doc_id,
         status: row.status,
         options: safeParse(row.options, {}),
+        taskId: row.task_id || null,
         createdAt: row.created_at
     };
 }
@@ -246,8 +264,15 @@ export function clearTasks(user_id) {
     return info.changes;
 }
 
-export function countProcessingTasks(user_id) {
-    const row = db.prepare("SELECT COUNT(*) as c FROM tasks WHERE user_id = ? AND status = 'processing'").get(user_id);
+// 返回"正在生成/占用额度"的任务数：仅统计流转中的状态。
+// 已就绪待用户确认的状态（spec_ready/preview_ready/multi_ready）不占额度，
+// 避免生成完成但未点击"确认完毕"的任务长期占用并发配额导致新任务无法创建。
+export function countNonTerminalTasks(user_id) {
+    const row = db.prepare(`
+        SELECT COUNT(*) as c FROM tasks
+        WHERE user_id = ?
+        AND status IN ('queued', 'processing', 'spec_confirming', 'generating_preview', 'generating_multi', 'waiting_confirm')
+    `).get(user_id);
     return row.c;
 }
 

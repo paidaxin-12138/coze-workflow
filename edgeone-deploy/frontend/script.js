@@ -1475,7 +1475,7 @@ window.confirmPreview = async function (taskId) {
 };
 
 // 确认多角度满意 → 完成
-window.confirmMulti = function (taskId) {
+window.confirmMulti = async function (taskId) {
     console.log('✅ confirmMulti 被调用，taskId:', taskId);
     const task = tasksMap.get(taskId);
     if (!task) {
@@ -1496,11 +1496,37 @@ window.confirmMulti = function (taskId) {
     // 3. 重置防抖时间戳，确保 displayResults 能正常执行
     _lastDisplayResult = { taskId: null, timestamp: 0 };
 
-    // 4. 展示最终结果
-    const images = [task.previewUrl, task.multiUrl].filter(Boolean);
+    // 4. 从后端拉取任务结果，兜底多视角图，避免仅依赖内存字段导致多视角图丢失
+    let backendResult = null;
+    try {
+        const token = getAuthToken();
+        if (token) {
+            const r = await fetch(getAPIUrl() + '/api/workflow', { headers: { 'Authorization': 'Bearer ' + token } });
+            if (r.ok) {
+                const d = await r.json();
+                const t = (d.tasks || []).find(x => x.id === taskId);
+                backendResult = t ? (t.result || {}) : null;
+            }
+        }
+    } catch (_) { backendResult = null; }
+
+    const previewUrl = task.previewUrl || (backendResult?.preview?.image_url) || '';
+    const multiUrl = task.multiUrl || (backendResult?.multi?.image_url) || '';
+    const multiImages = (Array.isArray(backendResult?.multi_angle_images) && backendResult.multi_angle_images.length > 0)
+        ? backendResult.multi_angle_images
+        : [];
+
+    // 汇总所有图片：预览图 + 多视角图，去重后展示与保存历史
+    const images = [...new Set([previewUrl, multiUrl, ...multiImages].filter(Boolean))];
+    console.log('[confirmMulti] previewUrl:', previewUrl, '| multiUrl:', multiUrl, '| multiImages:', multiImages, '| images:', images);
+
+    // 5. 展示最终结果
     window.displayResults({
         success: true,
         images,
+        image_url: previewUrl || '',
+        previewUrl: previewUrl || '',
+        multiUrl: multiUrl || '',
         message: '生成完成！',
         jobId: taskId,
         infoJson: { timestamp: new Date().toISOString() }
@@ -2250,7 +2276,7 @@ function checkStaleTasks() {
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + token
                         },
-                        body: JSON.stringify({ status: 'cancelled', error: '无应答超时' })
+                        body: JSON.stringify({ status: 'no_response', error: '无应答超时' })
                     });
                 } catch (_) {}
             })();

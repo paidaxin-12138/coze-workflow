@@ -304,6 +304,11 @@ async function incrementRateLimit(ip) {
 
 // 限流中间件（异步版本兼容 Express）
 app.use('/api/', async (req, res, next) => {
+    // GET /api/workflow 是只读状态同步接口，前端有活跃任务时每秒轮询，跳过严格限流避免 429
+    if (req.method === 'GET' && req.path === '/workflow') {
+        return next();
+    }
+
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
     const windowMs = CONFIG.RATE_LIMIT.windowMs;
