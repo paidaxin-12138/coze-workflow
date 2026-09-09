@@ -432,9 +432,9 @@ server = app.listen(PORT, () => {
     }
 });
 
-// 定时清理 7 天前的上传图片（每小时检查一次）
+// 定时清理 7 天前的上传图片（每天检查一次，降低磁盘 I/O，避免误删仍在使用的降级文件）
 const UPLOAD_DIR = path.join(__dirname, 'public/uploads');
-const CLEANUP_INTERVAL = 60 * 60 * 1000; // 1小时
+const CLEANUP_INTERVAL = 24 * 60 * 60 * 1000; // 1天
 const MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7天
 setInterval(() => {
     if (!fs.existsSync(UPLOAD_DIR)) return;

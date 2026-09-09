@@ -75,6 +75,15 @@ if (!CONFIG.WF_SPEC_ID || !CONFIG.WF_PREVIEW_ID || !CONFIG.WF_MULTI_ID) {
     console.warn('⚠️ 警告: WF_SPEC_ID / WF_PREVIEW_ID / WF_MULTI_ID 未完全配置，对应工作流将不可用');
 }
 
+// OSS 配置检查：缺失时图片保存/删除将降级，仅提示不阻断启动
+const OSS_ENV = ['OSS_REGION', 'OSS_ACCESS_KEY_ID', 'OSS_ACCESS_KEY_SECRET', 'OSS_BUCKET'];
+const ossMissing = OSS_ENV.filter(k => !process.env[k]);
+if (ossMissing.length > 0) {
+    console.warn(`⚠️ OSS 配置缺失: ${ossMissing.join(', ')}。图片将保存为临时 URL（不可持久化），删除任务/历史时无法清理 OSS 文件。请参考 .env.example 补齐。`);
+} else {
+    console.log('✅ OSS 配置完整，图片将持久化到阿里云 OSS');
+}
+
 // 生产环境 ALLOWED_ORIGINS 非空警告
 if (process.env.NODE_ENV === 'production' && CONFIG.ALLOWED_ORIGINS.length === 0) {
     console.warn('⚠️ 生产环境 ALLOWED_ORIGINS 未配置，所有跨域请求将被拒绝');

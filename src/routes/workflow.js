@@ -242,6 +242,12 @@ function getOSSKeyFromUrl(url) {
  */
 async function deleteOSSFiles(urls) {
     if (!urls || urls.length === 0) return;
+    const requiredEnv = ['OSS_REGION', 'OSS_ACCESS_KEY_ID', 'OSS_ACCESS_KEY_SECRET', 'OSS_BUCKET'];
+    const missing = requiredEnv.filter(k => !process.env[k]);
+    if (missing.length > 0) {
+        console.error(`[OSS] 配置缺失: ${missing.join(', ')}，无法删除任务关联图片`);
+        return;
+    }
     const client = new OSS({
         region: process.env.OSS_REGION,
         accessKeyId: process.env.OSS_ACCESS_KEY_ID,
@@ -251,7 +257,12 @@ async function deleteOSSFiles(urls) {
     const keys = urls.map(u => getOSSKeyFromUrl(u)).filter(Boolean);
     if (keys.length === 0) return;
     try {
-        await client.deleteMulti(keys);
+        // OSS deleteMulti 单次最多删除 1000 个对象，按 100 一批循环删除，防止大批量时失败
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+            const batch = keys.slice(i, i + BATCH_SIZE);
+            await client.deleteMulti(batch);
+        }
         console.log(`[OSS] 已删除 ${keys.length} 个文件`);
     } catch (e) {
         console.warn('[OSS] 批量删除失败:', e.message);

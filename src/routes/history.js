@@ -36,7 +36,12 @@ async function deleteOSSFiles(urls) {
     const keys = urls.map(u => getOSSKeyFromUrl(u)).filter(Boolean);
     if (keys.length === 0) return;
     try {
-        await client.deleteMulti(keys);
+        // OSS deleteMulti 单次最多删除 1000 个对象，按 100 一批循环删除，防止大批量时失败
+        const BATCH_SIZE = 100;
+        for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+            const batch = keys.slice(i, i + BATCH_SIZE);
+            await client.deleteMulti(batch);
+        }
         console.log(`[OSS] 已删除 ${keys.length} 个历史记录文件`);
     } catch (e) {
         console.warn('[OSS] 批量删除失败:', e.message);
