@@ -19,6 +19,15 @@ const registerLimiter = rateLimit({
     legacyHeaders: false,
 });
 
+// 登录接口专用限流：防暴力破解 + 账号枚举（每 IP 每分钟最多 5 次）
+const loginLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: 5,
+    message: { error: '登录尝试过于频繁，请稍后再试' },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
 function formatUser(user) {
     return {
         id: user.id, designer_id: user.designer_id,
@@ -36,7 +45,8 @@ router.post('/register', registerLimiter, async (req, res) => {
         if (!designer_id || !password) return res.status(400).json({ error: '请提供 designer_id 和 password' });
         if (designer_id.length < 3 || designer_id.length > 30)
             return res.status(400).json({ error: 'designer_id 长度需在 3-30 之间' });
-        if (password.length < 6) return res.status(400).json({ error: '密码至少 6 位' });
+        if (password.length < 6 || password.length > 128)
+            return res.status(400).json({ error: '密码长度需在 6-128 位之间' });
         if (getUserByDesignerId(designer_id)) return res.status(409).json({ error: '该 designer_id 已被注册' });
 
         const shouldFirstBeAdmin = shouldFirstUserBeAdmin();
@@ -53,10 +63,12 @@ router.post('/register', registerLimiter, async (req, res) => {
 });
 
 // POST /api/login
-router.post('/login', async (req, res) => {
+router.post('/login', loginLimiter, async (req, res) => {
     try {
         const { designer_id, password } = req.body;
         if (!designer_id || !password) return res.status(400).json({ error: '请提供 designer_id 和 password' });
+        if (typeof password === 'string' && password.length > 128)
+            return res.status(400).json({ error: '密码长度超出限制' });
         const user = getUserByDesignerId(designer_id);
         if (!user) return res.status(404).json({ error: `账号「${designer_id}」不存在，请先注册`, code: 'USER_NOT_FOUND' });
         if (user.is_disabled) return res.status(403).json({ error: '该账号已被禁用，请联系管理员', code: 'ACCOUNT_DISABLED' });
@@ -101,7 +113,7 @@ router.put('/account', requireAuth, (req, res) => {
 router.post('/account/change-password', requireAuth, async (req, res) => {
     const { current_password, new_password } = req.body;
     if (!current_password || !new_password) return res.status(400).json({ error: '请提供当前密码和新密码' });
-    if (new_password.length < 6) return res.status(400).json({ error: '新密码至少 6 位' });
+    if (new_password.length < 6 || new_password.length > 128) return res.status(400).json({ error: '新密码长度需在 6-128 位之间' });
     const user = getUserById(req.user.id);
     if (!(await bcrypt.compare(current_password, user.password_hash)))
         return res.status(401).json({ error: '当前密码错误' });

@@ -113,7 +113,7 @@ function handleError(err) {
     const errCode = classifyError(err);
     if (errCode === ERR_UNAUTHORIZED) {
         showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
-        setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+        handleUnauthorized();
     } else {
         showErrorInline(getFriendlyErrorByCode(errCode), err.message);
     }
@@ -124,8 +124,8 @@ function saveTasksToStorage() {
     try {
         const arr = Array.from(tasksMap.entries()).map(([id, task]) => {
             // 只保存关键字段，不保存函数等不可序列化数据
-            const { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt } = task;
-            return [id, { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt }];
+            const { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt, updatedAt, refFileId, refImageUrl } = task;
+            return [id, { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt, updatedAt, refFileId, refImageUrl }];
         });
         localStorage.setItem(TASKS_MAP_KEY, JSON.stringify(arr));
     } catch (_) {}
@@ -154,14 +154,7 @@ function loadTasksFromStorage() {
     } catch (_) {}
 }
 
-// 获取当前登录 token（未登录返回 null）
-function getAuthToken() {
-    try {
-        const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-        return s && s.token ? s.token : null;
-    } catch (_) { return null; }
-}
-
+// 获取当前登录 token（未登录返回 null）—— 见 /common.js 共享实现
 // 获取当前用户信息
 function getCurrentUser() {
     try {
@@ -170,21 +163,8 @@ function getCurrentUser() {
     } catch (_) { return null; }
 }
 
-// -----------------------------
-// 2. API Base URL 解析
-// -----------------------------
-const API_CONFIG = {
-    getBaseUrl() {
-        if (typeof window !== 'undefined' && window.__API_BASE__) {
-            return window.__API_BASE__;
-        }
-        return '';
-    }
-};
-
-function getAPIUrl() {
-    return API_CONFIG.getBaseUrl();
-}
+// 2. API Base URL 解析 —— getAPIUrl 见 /common.js 共享实现
+// 注：window.__API_BASE__ 由页面注入；此处不再单独保留 API_CONFIG
 
 // -----------------------------
 // 3. 辅助：收集高级选项
@@ -227,12 +207,7 @@ function buildFinalPrompt() {
     return parts.join('\n');
 }
 
-function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-}
-
+// escapeHtml 共享实现见 /common.js
 function escapeAttr(s) {
     return String(s).replace(/"/g, '&quot;');
 }
@@ -246,7 +221,20 @@ function truncateForDisplay(s, max = 220) {
 // -----------------------------
 // 4. 历史记录辅助
 // -----------------------------
+// 防止同一内容短时间内重复 POST 后端
+// 去重键：优先用 taskId（每个任务独立单位，内容相同也不会互相误判），无 taskId 时回退到 prompt + imageUrls
+const _savedHistoryKeys = new Set();
+function historyKey(entry) {
+    if (entry.taskId) return 'task:' + entry.taskId;
+    return JSON.stringify({ p: entry.prompt || '', i: entry.imageUrls || [] });
+}
+
 async function saveToHistory(entry) {
+    // 前端去重：同一任务或同内容只保存一次
+    const key = historyKey(entry);
+    if (_savedHistoryKeys.has(key)) return;
+    _savedHistoryKeys.add(key);
+
     try {
         const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
         const arr = raw ? JSON.parse(raw) : [];
@@ -259,7 +247,8 @@ async function saveToHistory(entry) {
             docId: entry.docId || '',
             status: entry.status || 'completed',
             createdAt: new Date().toISOString(),
-            options: entry.options || {}
+            options: entry.options || {},
+            taskId: entry.taskId || null
         });
         const trimmed = arr.slice(0, 50);
         localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
@@ -276,7 +265,8 @@ async function saveToHistory(entry) {
         imageUrls: entry.imageUrls || [],
         docId: entry.docId || '',
         status: entry.status || 'completed',
-        options: entry.options || {}
+        options: entry.options || {},
+        taskId: entry.taskId || null
     });
     const headers = {
         'Content-Type': 'application/json',
@@ -535,6 +525,27 @@ window.openSpecModal = function(taskId, spec) {
 
 // 终态任务状态列表
 const TERMINAL_STATES = ['completed', 'failed', 'no_response', 'cancelled'];
+
+// 状态进度排序：值越大表示任务推进得越靠后。用于刷新/切页后合并本地与后端状态时，
+// 始终采纳"更前进"的状态，避免本地陈旧状态挡住后端已推进的真实进度。
+function statusRank(s) {
+    switch (s) {
+        case 'queued': return 0;
+        case 'processing': return 1;
+        case 'generating_preview': return 2;
+        case 'spec_confirming':
+        case 'confirmed':
+        case 'spec_ready': return 3;
+        case 'preview_ready': return 4;
+        case 'generating_multi': return 5;
+        case 'multi_ready': return 6;
+        case 'completed':
+        case 'failed':
+        case 'no_response':
+        case 'cancelled': return 100;
+        default: return 1;
+    }
+}
 
 // ===== 取消任务：终止当前任务并标记为已取消 =====
 function cancelTask(taskId) {
@@ -919,7 +930,8 @@ window.openLargeImageModal = function(url) {
     const img = document.getElementById('modalImage');
     if (!modal || !img || !url) return;
     img.style.backgroundImage = 'url(' + url + ')';
-    modal.style.display = 'flex';
+    modal.style.display = '';
+    modal.classList.remove('hidden');
     modal.classList.add('flex');
     setTimeout(() => { modal.style.opacity = '1'; }, 10);
 };
@@ -935,6 +947,7 @@ const refFileName = $('refFileName');
 const refFileIdText = $('refFileId');
 const refUploadingText = $('refUploading');
 let refImageFileId = null;
+let refImageUrl = null;
 
 if (refZone && refFileInput) {
     refZone.addEventListener('click', () => refFileInput.click());
@@ -956,49 +969,78 @@ if (refZone && refFileInput) {
     const refRemoveBtn = $('refRemove');
     if (refRemoveBtn) refRemoveBtn.addEventListener('click', () => {
         refImageFileId = null;
+        refImageUrl = null;
         refUploadedBox.classList.add('hidden');
         refUploadedBox.classList.remove('flex');
         refFileInput.value = '';
     });
 }
 
-async function uploadRefImage(file) {
-    if (!file.type.startsWith('image/')) { showErrorInline('参考图仅支持图片文件'); return; }
-    if (file.size > 5 * 1024 * 1024) { showErrorInline('参考图不能超过 5MB'); return; }
-    if (!getAuthToken()) { window.location.href = 'login.html?redirect=studio.html'; return; }
-    if (refUploadingText) refUploadingText.classList.remove('hidden');
-    try {
+function uploadRefImage(file) {
+    return new Promise((resolve, reject) => {
+        if (!file.type.startsWith('image/')) { showErrorInline('参考图仅支持图片文件'); reject(new Error('图片格式错误')); return; }
+        if (file.size > 5 * 1024 * 1024) { showErrorInline('参考图不能超过 5MB'); reject(new Error('图片过大')); return; }
+        if (!getAuthToken()) { handleUnauthorized(); reject(new Error('未登录')); return; }
+
+        const refUploadProgress = document.getElementById('refUploadProgress');
+        if (refUploadingText) refUploadingText.classList.remove('hidden');
+        if (refUploadProgress) refUploadProgress.style.width = '0%';
+
         const fd = new FormData();
         fd.append('file', file);
-        const res = await fetch(`${getAPIUrl()}/api/upload/image`, {
-            method: 'POST',
-            headers: { Authorization: `Bearer ${getAuthToken()}` },
-            body: fd
-        });
-        const j = await res.json().catch(() => ({}));
-        if (res.status === 401) {
-            try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
-            alert('登录已过期，请重新登录');
-            window.location.href = 'login.html?redirect=studio.html';
-            return;
-        }
-        if (!res.ok) throw new Error(j.error || `HTTP ${res.status}`);
-        refImageFileId = j.file_id;
-        if (refThumb) refThumb.src = URL.createObjectURL(file);
-        if (refFileName) refFileName.textContent = file.name;
-        if (refFileIdText) refFileIdText.textContent = 'file_id: ' + j.file_id;
-        if (refUploadedBox) {
-            refUploadedBox.classList.remove('hidden');
-            refUploadedBox.classList.add('flex');
-        }
-        showToast(`参考图「${file.name}」上传成功`);
-        console.log('🖼️ 参考图已上传:', file.name, '→', j.file_id);
-    } catch (e) {
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${getAPIUrl()}/api/workflow/image`);
+        xhr.setRequestHeader('Authorization', `Bearer ${getAuthToken()}`);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && refUploadProgress) {
+                const pct = Math.round((e.loaded / e.total) * 100);
+                refUploadProgress.style.width = pct + '%';
+            }
+        };
+
+        xhr.onload = function () {
+            try {
+                const j = JSON.parse(xhr.responseText || '{}');
+                if (xhr.status === 401) {
+                    handleUnauthorized();
+                    reject(new Error('未登录'));
+                    return;
+                }
+                if (xhr.status < 200 || xhr.status >= 300) throw new Error(j.error || `HTTP ${xhr.status}`);
+                if (refUploadProgress) refUploadProgress.style.width = '100%';
+
+                refImageFileId = j.file_id;
+                if (j.image_url) refImageUrl = j.image_url;
+                if (refThumb) refThumb.src = URL.createObjectURL(file);
+                if (refFileName) refFileName.textContent = file.name;
+                if (refFileIdText) refFileIdText.textContent = 'file_id: ' + j.file_id;
+                if (refUploadedBox) {
+                    refUploadedBox.classList.remove('hidden');
+                    refUploadedBox.classList.add('flex');
+                }
+                showToast(`参考图「${file.name}」上传成功`);
+                console.log('🖼️ 参考图已上传:', file.name, '→', j.file_id, j.image_url ? '| URL: ' + j.image_url.slice(0, 60) : '');
+                resolve(j);
+            } catch (e) {
+                reject(e);
+            }
+        };
+
+        xhr.onerror = () => { reject(new Error('网络错误')); };
+        xhr.ontimeout = () => { reject(new Error('上传超时')); };
+        xhr.timeout = 120000;
+
+        xhr.send(fd);
+    }).catch(e => {
         refImageFileId = null;
+        refImageUrl = null;
         showErrorInline('参考图上传失败，请稍后重试');
-    } finally {
+        throw e;
+    }).finally(() => {
         if (refUploadingText) refUploadingText.classList.add('hidden');
-    }
+    });
 }
 
 // 新增：上传图片并返回 file_id（供并发调用使用，不操作 UI）
@@ -1014,7 +1056,7 @@ async function uploadRefImageAndGetId(file) {
     }
     const fd = new FormData();
     fd.append('file', file);
-    const res = await fetch(`${getAPIUrl()}/api/upload/image`, {
+    const res = await fetch(`${getAPIUrl()}/api/workflow/image`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${getAuthToken()}` },
         body: fd
@@ -1023,7 +1065,7 @@ async function uploadRefImageAndGetId(file) {
     if (!res.ok) {
         throw new Error(data.error || '上传失败');
     }
-    return data.file_id;
+    return { file_id: data.file_id, image_url: data.image_url };
 }
 
 // 更新 specModal 中的参考图上传区域状态
@@ -1043,11 +1085,12 @@ function updateSpecRefState(task) {
     failedEl.classList.add('hidden');
 
     const refFileId = task.refFileId || '';
+    const refUrl = task.refImageUrl || '';
     if (refFileId) {
         // 已上传成功
         successEl.classList.remove('hidden');
         successEl.classList.add('flex');
-        if (fileIdDisplay) fileIdDisplay.textContent = 'file_id: ' + refFileId;
+        if (fileIdDisplay) fileIdDisplay.textContent = refUrl ? 'URL: ' + refUrl.slice(0, 60) + '...' : 'file_id: ' + refFileId;
     } else {
         // 未上传
         emptyEl.classList.remove('hidden');
@@ -1069,8 +1112,8 @@ function updateSpecRefState(task) {
     if (changeBtn) changeBtn.addEventListener('click', () => fileInput.click());
     if (retryBtn) retryBtn.addEventListener('click', () => fileInput.click());
 
-    // 选择文件后上传
-    fileInput.addEventListener('change', async () => {
+    // 选择文件后上传（带进度条）
+    fileInput.addEventListener('change', () => {
         const f = fileInput.files && fileInput.files[0];
         if (!f) return;
         const taskId = _currentSpecTaskId;
@@ -1082,27 +1125,80 @@ function updateSpecRefState(task) {
         const uploadingEl = document.getElementById('specRefUploading');
         const successEl = document.getElementById('specRefSuccess');
         const failedEl = document.getElementById('specRefFailed');
+        const specRefProgress = document.getElementById('specRefUploadProgress');
         if (emptyEl) emptyEl.classList.add('hidden');
         if (uploadingEl) { uploadingEl.classList.remove('hidden'); uploadingEl.classList.add('flex'); }
         if (successEl) successEl.classList.add('hidden');
         if (failedEl) failedEl.classList.add('hidden');
+        if (specRefProgress) specRefProgress.style.width = '0%';
 
-        try {
-            const fileId = await uploadRefImageAndGetId(f);
-            task.refFileId = fileId;
-            refImageFileId = fileId;
-            showToast('参考图上传成功');
-            // 更新状态
-            const fileIdDisplay = document.getElementById('specRefFileIdDisplay');
-            if (uploadingEl) uploadingEl.classList.add('hidden');
-            if (successEl) { successEl.classList.remove('hidden'); successEl.classList.add('flex'); }
-            if (fileIdDisplay) fileIdDisplay.textContent = 'file_id: ' + fileId;
-        } catch (e) {
+        if (!f.type.startsWith('image/')) {
+            if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
             const errorMsg = document.getElementById('specRefErrorMsg');
+            if (errorMsg) errorMsg.textContent = '仅支持图片文件';
+            return;
+        }
+        if (f.size > 5 * 1024 * 1024) {
+            if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
+            const errorMsg = document.getElementById('specRefErrorMsg');
+            if (errorMsg) errorMsg.textContent = '图片不能超过 5MB';
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('file', f);
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${getAPIUrl()}/api/workflow/image`);
+        xhr.setRequestHeader('Authorization', `Bearer ${getAuthToken()}`);
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable && specRefProgress) {
+                specRefProgress.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+            }
+        };
+
+        xhr.onload = function () {
+            if (uploadingEl) uploadingEl.classList.add('hidden');
+            try {
+                const j = JSON.parse(xhr.responseText || '{}');
+                if (xhr.status === 401) {
+                    handleUnauthorized();
+                    return;
+                }
+                if (xhr.status < 200 || xhr.status >= 300) throw new Error(j.error || '上传失败');
+                if (specRefProgress) specRefProgress.style.width = '100%';
+
+                const fileId = j.file_id;
+                const imageUrl = j.image_url || '';
+                task.refFileId = fileId;
+                task.refImageUrl = imageUrl;
+                refImageFileId = fileId;
+                refImageUrl = imageUrl;
+                showToast('参考图上传成功');
+                const fileIdDisplay = document.getElementById('specRefFileIdDisplay');
+                if (successEl) { successEl.classList.remove('hidden'); successEl.classList.add('flex'); }
+                if (fileIdDisplay) fileIdDisplay.textContent = imageUrl ? 'URL: ' + imageUrl.slice(0, 60) + '...' : 'file_id: ' + fileId;
+            } catch (e) {
+                if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
+                const errorMsg = document.getElementById('specRefErrorMsg');
+                if (errorMsg) errorMsg.textContent = e.message || '上传失败';
+            }
+        };
+
+        xhr.onerror = () => {
             if (uploadingEl) uploadingEl.classList.add('hidden');
             if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
-            if (errorMsg) errorMsg.textContent = e.message || '上传失败';
-        }
+            const errorMsg = document.getElementById('specRefErrorMsg');
+            if (errorMsg) errorMsg.textContent = '网络错误，请重试';
+        };
+        xhr.ontimeout = () => {
+            if (uploadingEl) uploadingEl.classList.add('hidden');
+            if (failedEl) { failedEl.classList.remove('hidden'); failedEl.classList.add('flex'); }
+            const errorMsg = document.getElementById('specRefErrorMsg');
+            if (errorMsg) errorMsg.textContent = '上传超时，请重试';
+        };
+        xhr.timeout = 120000;
+        xhr.send(fd);
     });
 
     // 移除参考图
@@ -1112,7 +1208,9 @@ function updateSpecRefState(task) {
             const task = taskId ? window.tasksMap.get(taskId) : null;
             if (task) {
                 task.refFileId = '';
+                task.refImageUrl = '';
                 refImageFileId = null;
+                refImageUrl = null;
             }
             const emptyEl = document.getElementById('specRefEmpty');
             const successEl = document.getElementById('specRefSuccess');
@@ -1137,7 +1235,7 @@ if (form) form.addEventListener('submit', async (event) => {
         return;
     }
     if (!getAuthToken()) {
-        window.location.href = 'login.html?redirect=studio.html';
+        handleUnauthorized();
         return;
     }
 
@@ -1169,7 +1267,7 @@ async function stepSpec(taskId, userInput) {
     });
 
     if (res.status === 401) {
-        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+        handleUnauthorized();
         throw new Error('LOGIN_EXPIRED');
     }
     if (!res.ok) {
@@ -1180,14 +1278,18 @@ async function stepSpec(taskId, userInput) {
 }
 
 // 第二步：生成预览图（可选 detail 参数，用于修改意见）
-async function stepPreview(taskId, spec, detail, refFileId) {
+async function stepPreview(taskId, spec, detail, refFileId, refImageUrl) {
     const API_BASE_URL = getAPIUrl();
     const token = getAuthToken();
     console.log('🚀 调用 stepPreview:', taskId, detail ? '(带修改意见)' : '');
 
     const body = { task_id: taskId, spec };
     if (detail) body.detail = detail;
-    if (refFileId) body.ref_file_id = refFileId;
+    if (refImageUrl) {
+        body.image_url = refImageUrl;
+    } else if (refFileId) {
+        body.ref_file_id = refFileId;
+    }
 
     const res = await fetch(`${API_BASE_URL}/api/workflow/step/preview`, {
         method: 'POST',
@@ -1199,7 +1301,7 @@ async function stepPreview(taskId, spec, detail, refFileId) {
     });
 
     if (res.status === 401) {
-        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+        handleUnauthorized();
         throw new Error('LOGIN_EXPIRED');
     }
     if (!res.ok) {
@@ -1242,7 +1344,7 @@ async function stepMulti(taskId, referenceImageUrl, referencePrompt) {
     });
 
     if (res.status === 401) {
-        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+        handleUnauthorized();
         throw new Error('LOGIN_EXPIRED');
     }
     if (!res.ok) {
@@ -1282,7 +1384,7 @@ window.confirmSpec = async function (taskId, updatedSpec, detail) {
     showLoadingState('正在生成预览图...');
 
     try {
-        const result = await stepPreview(taskId, task.spec, detail, task.refFileId || undefined);
+        const result = await stepPreview(taskId, task.spec, detail, task.refFileId || undefined, task.refImageUrl || undefined);
         console.log('✅ stepPreview 完成:', result);
 
         // 保存 previewPrompt（从工作流返回的 prompt 字段）
@@ -1358,7 +1460,7 @@ window.confirmSpec = async function (taskId, updatedSpec, detail) {
         // ==== 新增：使用差异化错误处理 ====
         if (classifyError(err) === ERR_UNAUTHORIZED) {
             showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
-            setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+            handleUnauthorized();
         } else {
             showErrorInline(getFriendlyErrorByCode(classifyError(err)), err.message);
         }
@@ -1467,12 +1569,27 @@ window.confirmPreview = async function (taskId) {
         // ==== 新增：使用差异化错误处理 ====
         if (classifyError(err) === ERR_UNAUTHORIZED) {
             showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
-            setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+            handleUnauthorized();
         } else {
             showErrorInline(getFriendlyErrorByCode(classifyError(err)), err.message);
         }
     }
 };
+
+// 从后端重新拉取任务结果（确保拿到持久化的 preview / multi 图片）
+async function fetchTaskResultFromBackend(taskId) {
+    try {
+        const token = getAuthToken();
+        if (!token) return null;
+        const res = await fetch(getAPIUrl() + '/api/workflow', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        const t = (data.tasks || []).find(x => x.id === taskId);
+        return t ? (t.result || {}) : null;
+    } catch (_) { return null; }
+}
 
 // 确认多角度满意 → 完成
 window.confirmMulti = async function (taskId) {
@@ -1487,6 +1604,22 @@ window.confirmMulti = async function (taskId) {
     task.status = 'completed';
     task.statusChangedAt = Date.now();
 
+    // 1.1 同步完成状态到后端，确保任务列表页/并发统计能感知任务已结束
+    (async () => {
+        try {
+            const token = getAuthToken();
+            if (!token) return;
+            await fetch(getAPIUrl() + '/api/workflow/' + taskId, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ status: 'completed' })
+            });
+        } catch (_) { /* 网络异常不影响本地完成流程 */ }
+    })();
+
     // 2. 立即更新 UI 并持久化
     renderTaskProgress();
     saveTasksToStorage();
@@ -1497,19 +1630,7 @@ window.confirmMulti = async function (taskId) {
     _lastDisplayResult = { taskId: null, timestamp: 0 };
 
     // 4. 从后端拉取任务结果，兜底多视角图，避免仅依赖内存字段导致多视角图丢失
-    let backendResult = null;
-    try {
-        const token = getAuthToken();
-        if (token) {
-            const r = await fetch(getAPIUrl() + '/api/workflow', { headers: { 'Authorization': 'Bearer ' + token } });
-            if (r.ok) {
-                const d = await r.json();
-                const t = (d.tasks || []).find(x => x.id === taskId);
-                backendResult = t ? (t.result || {}) : null;
-            }
-        }
-    } catch (_) { backendResult = null; }
-
+    const backendResult = await fetchTaskResultFromBackend(taskId);
     const previewUrl = task.previewUrl || (backendResult?.preview?.image_url) || '';
     const multiUrl = task.multiUrl || (backendResult?.multi?.image_url) || '';
     const multiImages = (Array.isArray(backendResult?.multi_angle_images) && backendResult.multi_angle_images.length > 0)
@@ -1520,7 +1641,7 @@ window.confirmMulti = async function (taskId) {
     const images = [...new Set([previewUrl, multiUrl, ...multiImages].filter(Boolean))];
     console.log('[confirmMulti] previewUrl:', previewUrl, '| multiUrl:', multiUrl, '| multiImages:', multiImages, '| images:', images);
 
-    // 5. 展示最终结果
+    // 5. 展示最终结果（确保 preview 和多视角图都传入）
     window.displayResults({
         success: true,
         images,
@@ -1550,7 +1671,7 @@ window.regeneratePreviewWithDetail = async function (taskId, detail) {
     task.statusChangedAt = Date.now();
     renderTaskProgress();
     try {
-        const result = await stepPreview(taskId, task.spec, detail, task.refFileId || undefined);
+        const result = await stepPreview(taskId, task.spec, detail, task.refFileId || undefined, task.refImageUrl || undefined);
         // 兜底机制：无图片 URL 时展示兜底弹窗
         if (!result.success || !result.image_url) {
             task.status = 'failed';
@@ -1713,13 +1834,14 @@ window.confirmGenerate = function () {
                     name: taskName,
                     params: {
                         user_input: inputValue,
-                        image_file_id: typeof refImageFileId !== 'undefined' ? (refImageFileId || '') : ''
+                        image_file_id: typeof refImageFileId !== 'undefined' ? (refImageFileId || '') : '',
+                        image_url: typeof refImageUrl !== 'undefined' ? (refImageUrl || '') : ''
                     }
                 })
             });
 
             if (createRes.status === 401) {
-                try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+                handleUnauthorized();
                 throw new Error('LOGIN_EXPIRED');
             }
             if (!createRes.ok) {
@@ -1744,7 +1866,8 @@ window.confirmGenerate = function () {
                 status: 'spec_confirming',
                 createdAt: Date.now(),
                 statusChangedAt: Date.now(),
-                refFileId: typeof refImageFileId !== 'undefined' ? (refImageFileId || '') : ''
+                refFileId: typeof refImageFileId !== 'undefined' ? (refImageFileId || '') : '',
+                refImageUrl: typeof refImageUrl !== 'undefined' ? (refImageUrl || '') : ''
             };
             tasksMap.set(taskId, taskEntry);
             selectedTaskId = taskId;
@@ -1757,7 +1880,9 @@ window.confirmGenerate = function () {
             // b. 并发执行 stepSpec 和图片上传（如果待上传的文件尚未处理）
             const refFileInput = document.getElementById('refFile');
             const hasPendingFile = refFileInput && refFileInput.files && refFileInput.files[0];
-            let uploadPromise = Promise.resolve(taskEntry.refFileId || null);
+            let uploadPromise = taskEntry.refFileId
+                ? Promise.resolve({ file_id: taskEntry.refFileId, image_url: taskEntry.refImageUrl || '' })
+                : Promise.resolve(null);
             if (hasPendingFile) {
                 const file = refFileInput.files[0];
                 uploadPromise = uploadRefImageAndGetId(file).catch(err => {
@@ -1767,16 +1892,21 @@ window.confirmGenerate = function () {
                 });
             }
 
-            const [specResult, uploadedFileId] = await Promise.all([
+            const [specResult, uploadedFile] = await Promise.all([
                 stepSpec(taskId, inputValue),
                 uploadPromise
             ]);
             console.log('✅ stepSpec 完成:', specResult);
 
-            // 如果上传成功，更新 refFileId
+            // 如果上传成功，更新 refFileId 和 refImageUrl
+            const uploadedFileId = uploadedFile ? uploadedFile.file_id : null;
+            const uploadedImageUrl = uploadedFile ? uploadedFile.image_url : null;
             if (uploadedFileId) {
                 taskEntry.refFileId = uploadedFileId;
                 refImageFileId = uploadedFileId;
+            }
+            if (uploadedImageUrl) {
+                taskEntry.refImageUrl = uploadedImageUrl;
             }
 
             const spec = specResult.spec || specResult.data || specResult;
@@ -1799,7 +1929,10 @@ window.confirmGenerate = function () {
             // ==== 新增：使用差异化错误处理 ====
             if (classifyError(err) === ERR_UNAUTHORIZED) {
                 showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
-                setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+                handleUnauthorized();
+            } else if (/过多任务|请求过于频繁|429|请等待完成后再试/.test(err.message || '')) {
+                // 并发已满：用弹窗明确提示，而不是在页面内联报错，用户知道需等待
+                showErrorDialog('稍后再试', '当前同时生成的创意已满，请等待其中一个完成后，再开启新的构思 🙏');
             } else {
                 showErrorInline(getFriendlyErrorByCode(classifyError(err)), err.message);
             }
@@ -2026,7 +2159,7 @@ function renderTaskProgress() {
 }
 
 // 选中任务卡片
-function selectTask(taskId) {
+async function selectTask(taskId) {
     selectedTaskId = taskId;
     document.querySelectorAll('.task-card').forEach(c => c.classList.remove('active', 'border-forest-600', 'bg-forest-50/30'));
     const active = document.querySelector('.task-card[data-task-id="' + taskId + '"]');
@@ -2036,6 +2169,8 @@ function selectTask(taskId) {
 
     const task = tasksMap.get(taskId);
 
+    // 进行中且正在等待用户确认的任务：点击卡片时二次触发对应的确认弹窗（兜底恢复交互）
+    // （此处仅做延后判定，实际恢复逻辑放在 placeholder 声明与 !task 判断之后）
     const placeholder = document.getElementById('taskPlaceholderState');
     const placeholderText = document.getElementById('taskPlaceholderText');
     const initialState = document.getElementById('initialState');
@@ -2044,13 +2179,23 @@ function selectTask(taskId) {
     const errorState = document.getElementById('errorState');
 
     if (initialState) initialState.style.display = 'none';
-    if (resultGrid) { resultGrid.style.display = 'none'; resultGrid.classList.add('hidden', 'opacity-0'); }
     if (loadingState) { loadingState.style.display = 'none'; loadingState.classList.add('hidden', 'opacity-0'); }
     if (errorState) { errorState.style.display = 'none'; errorState.style.opacity = '0'; }
 
     if (!task) {
         if (placeholder) {
             placeholderText.textContent = '任务不存在';
+            placeholder.style.display = 'flex';
+        }
+        return;
+    }
+
+    // 进行中且正在等待用户确认的任务：点击卡片时二次触发对应的确认弹窗（兜底恢复交互）
+    if (!TERMINAL_STATES.includes(task.status) && WAITING_STATUSES.includes(task.status)) {
+        const resumed = await resumeTaskInteraction(task);
+        if (!resumed) {
+            // 数据尚未恢复，走默认占位展示
+            placeholderText.textContent = '任务处理中...';
             placeholder.style.display = 'flex';
         }
         return;
@@ -2066,6 +2211,7 @@ function selectTask(taskId) {
                 image_url: task.previewUrl || '',
                 message: '生成完成！',
                 jobId: taskId,
+                persist: false, // 仅展示已有结果，不重复保存历史
                 infoJson: { timestamp: new Date().toISOString() }
             });
         } else {
@@ -2081,6 +2227,7 @@ function selectTask(taskId) {
                 image_url: task.previewUrl || '',
                 message: '多角度图已生成',
                 jobId: taskId,
+                persist: false, // 仅展示已有结果，不重复保存历史
                 infoJson: { timestamp: new Date().toISOString() }
             });
         }
@@ -2093,6 +2240,77 @@ function selectTask(taskId) {
         if (placeholder) {
             placeholderText.textContent = '任务处理中...';
             placeholder.style.display = 'flex';
+        }
+    }
+}
+
+// 处于"等待用户确认"状态的任务
+const WAITING_STATUSES = ['spec_confirming', 'confirmed', 'spec_ready', 'preview_ready', 'multi_ready'];
+
+// 刷新/切页返回后：根据任务所处的等待状态，二次触发对应的确认弹窗（兜底恢复进行中的交互）。
+// 返回 true 表示已成功恢复弹窗，false 表示数据缺失未恢复（调用方应走默认的占位展示）。
+async function resumeTaskInteraction(task) {
+    if (!task || !task.taskId) return false;
+    const taskId = task.taskId;
+
+    if (task.status === 'spec_confirming' || task.status === 'confirmed' || task.status === 'spec_ready') {
+        let spec = task.spec;
+        // 本地无 spec（可能刷新时第一步尚未落盘），尝试从后端 result 恢复
+        if (!spec) {
+            try {
+                const r = await fetchTaskResultFromBackend(taskId);
+                spec = r && r.spec ? r.spec : null;
+            } catch (_) { spec = null; }
+        }
+        if (spec) {
+            if (typeof window.openSpecModal === 'function') { window.openSpecModal(taskId, spec); return true; }
+        }
+        return false;
+    }
+
+    if (task.status === 'preview_ready') {
+        let previewUrl = task.previewUrl;
+        if (!previewUrl) {
+            try {
+                const r = await fetchTaskResultFromBackend(taskId);
+                previewUrl = (r && r.preview && r.preview.image_url) || '';
+            } catch (_) { previewUrl = ''; }
+        }
+        if (previewUrl) {
+            if (typeof window.openPreviewModal === 'function') {
+                window.openPreviewModal(taskId, previewUrl, task.previewFileId || '', task.prompt || '', task.spec || null);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (task.status === 'multi_ready') {
+        if (task.multiUrl && typeof window.openMultiModal === 'function') {
+            // openMultiModal 内部不维护 _previewTaskId，弹窗按钮（重试/返回/完成）依赖它，恢复时需显式设置
+            window._previewTaskId = taskId;
+            window.openMultiModal(taskId, task.multiUrl);
+            return true;
+        }
+        return false;
+    }
+
+    return false;
+}
+
+// 自动兜底：页面首次加载/切页返回后，恢复"最晚一个"进行中且正在等待确认的任务弹窗
+let _autoResumed = false;
+function autoResumeWaitingModal() {
+    if (_autoResumed) return;
+    const waiting = Array.from(tasksMap.values())
+        .filter(t => !TERMINAL_STATES.includes(t.status) && WAITING_STATUSES.includes(t.status))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (waiting.length > 0) {
+        const resumed = resumeTaskInteraction(waiting[0]);
+        if (resumed && resumed.then) {
+            resumed.then(ok => { if (ok) _autoResumed = true; });
+        } else if (resumed) {
+            _autoResumed = true;
         }
     }
 }
@@ -2145,25 +2363,40 @@ async function syncTasksFromBackend() {
             const serverCreated = convertSqliteTime(serverTask.createdAt);
             const serverUpdated = convertSqliteTime(serverTask.updatedAt);
             const serverStatusChanged = convertSqliteTime(serverTask.statusChangedAt);
+            // 状态合并：本地与后端两者中取"更前进"的状态（而非按时间戳，避免刷新后本地陈旧状态长时间挡住后端真实进度）
+            const statusAdvanced = !localTask || (serverTask.status && statusRank(serverTask.status) > statusRank(localTask.status));
+            const finalStatus = statusAdvanced ? serverTask.status : localTask.status;
+            // 从后端 task.result 中恢复 spec（对象），页面刷新且本地无 spec 时使用
+            let specVal = localTask?.spec || null;
+            if (!specVal && serverTask.result && typeof serverTask.result === 'object' && serverTask.result.spec) {
+                specVal = serverTask.result.spec;
+            }
             const normalizedTask = {
                 ...serverTask,
+                status: finalStatus,
                 // 保留前端独有字段（后端不包含这些字段，同步时不会被覆盖）
                 // 同时从后端 params.user_input 提取 prompt（后端任务创建时存入的原始用户输入）
                 prompt: localTask?.prompt || serverTask.params?.user_input || '',
-                spec: localTask?.spec || serverTask.spec || null,
+                spec: specVal,
                 previewPrompt: localTask?.previewPrompt || '',
                 // 从后端 task.result 中提取图片 URL（页面刷新后 localTask 不存在时使用）
                 previewUrl: localTask?.previewUrl || extractUrlFromResult(serverTask.result, 'preview.image_url') || '',
                 previewFileId: localTask?.previewFileId || '',
                 multiUrl: localTask?.multiUrl || extractUrlFromResult(serverTask.result, 'multi.image_url') || '',
                 refFileId: localTask?.refFileId || '',
+                refImageUrl: localTask?.refImageUrl || '',
                 taskId: serverTask.id,
                 createdAt: serverCreated,
                 updatedAt: serverUpdated,
                 statusChangedAt: serverStatusChanged,
             };
-            // 如果本地不存在，或者后端状态更新时间比本地新，更新本地
-            if (!localTask || serverUpdated > (localTask.updatedAt || 0)) {
+            // 后端补齐了本地缺失的关键数据（spec / 预览图 / 多角度图）时也触发更新
+            const dataFilled = !localTask ||
+                (specVal && specVal !== localTask.spec) ||
+                (normalizedTask.previewUrl && !localTask.previewUrl) ||
+                (normalizedTask.multiUrl && !localTask.multiUrl);
+            // 本地不存在、后端状态更前进、后端补齐缺失数据、或后端更新时间更新时，合并到本地
+            if (statusAdvanced || dataFilled || (localTask && serverUpdated > (localTask.updatedAt || 0))) {
                 tasksMap.set(serverTask.id, normalizedTask);
                 changed = true;
             }
@@ -2191,22 +2424,35 @@ async function syncTasksFromBackend() {
 // 定时刷新右侧面板 + 超时检查 + 后端同步
 function startTaskProgressPolling() {
     renderTaskProgress();
+    // 页面加载后立即同步一次后端数据，并尽快恢复最新待确认弹窗（不依赖首次轮询间隔）
+    (async () => {
+        await syncTasksFromBackend();
+        autoResumeWaitingModal();
+    })();
     // 动态轮询：有活跃任务时每 5 秒，无活跃任务时每 30 秒
     let pollingInterval = 5000;
     let timer = setInterval(() => {
         renderTaskProgress();
         syncTasksFromBackend();
+        // 首次同步完成后，恢复进行中且正在等待确认的任务弹窗（兜底状态保持）
+        autoResumeWaitingModal();
         // 检查是否有活跃任务（非终态）
         const hasActiveTasks = Array.from(tasksMap.values()).some(t => !TERMINAL_STATES.includes(t.status));
         // 根据是否存在活跃任务动态调整轮询间隔
         if (hasActiveTasks && pollingInterval !== 5000) {
             clearInterval(timer);
             pollingInterval = 5000;
-            timer = setInterval(renderTaskProgress, pollingInterval);
+            timer = setInterval(() => {
+                renderTaskProgress();
+                syncTasksFromBackend();
+            }, pollingInterval);
         } else if (!hasActiveTasks && pollingInterval !== 30000) {
             clearInterval(timer);
             pollingInterval = 30000;
-            timer = setInterval(renderTaskProgress, pollingInterval);
+            timer = setInterval(() => {
+                renderTaskProgress();
+                syncTasksFromBackend();
+            }, pollingInterval);
         }
     }, pollingInterval);
 
@@ -2218,7 +2464,10 @@ function startTaskProgressPolling() {
             // 页面重新可见时立即同步一次后端数据
             syncTasksFromBackend();
             pollingInterval = Array.from(tasksMap.values()).some(t => !TERMINAL_STATES.includes(t.status)) ? 5000 : 30000;
-            timer = setInterval(renderTaskProgress, pollingInterval);
+            timer = setInterval(() => {
+                renderTaskProgress();
+                syncTasksFromBackend();
+            }, pollingInterval);
         }
     });
 }
@@ -2297,7 +2546,6 @@ window.displayResults = function displayResults(data) {
     // 防抖：同一任务 2 秒内重复调用直接忽略
     const taskId = data.jobId || data.taskId || 'unknown';
     if (_lastDisplayResult.taskId === taskId && Date.now() - _lastDisplayResult.timestamp < 2000) {
-        console.warn('[displayResults] 重复调用已忽略:', taskId.slice(0, 8));
         return;
     }
     _lastDisplayResult = { taskId, timestamp: Date.now() };
@@ -2322,7 +2570,8 @@ window.displayResults = function displayResults(data) {
 
     renderRawError(data);
 
-    const images = extractImages(data);
+    const images = [...new Set(extractImages(data).map(u => u ? u.replace(/[`'"]/g, '').trim() : u).filter(Boolean))];
+    console.log('[displayResults] extractImages 结果:', images, '| data.images:', data.images, '| data.multiUrl:', data.multiUrl);
     renderImages(images, data);
 
     let downloadUrl = data.downloadUrl || (data.infoJson && data.infoJson.downloadUrl);
@@ -2333,23 +2582,33 @@ window.displayResults = function displayResults(data) {
 
     resultGrid.style.display = 'block';
     resultGrid.classList.add('result-fade-in');
-    requestAnimationFrame(() => resultGrid.classList.remove('hidden', 'opacity-0'));
+    resultGrid.classList.remove('hidden', 'opacity-0');
+    requestAnimationFrame(() => {
+        resultGrid.classList.remove('hidden', 'opacity-0');
+    });
     setTimeout(() => {
         resultGrid.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
 
-    saveToHistory({
-        prompt: promptInput ? promptInput.value.trim() : (tasksMap.get(taskId)?.prompt || ''),
-        title: title,
-        imageUrls: images,
-        docId: downloadUrl || '',
-        status: 'completed',
-        options: {
-            fragrances: collectSelectedOptions('fragranceTags'),
-            moods: collectSelectedOptions('moodTags'),
-            style: collectSelectedOptions('styleSelect', true)
-        }
-    });
+    console.log('[displayResults] 完成 - resultGrid 应可见');
+
+    // 仅在首次生成完成（confirmMulti）时保存历史；点击任务卡片重新展示时跳过
+    if (data.persist !== false) {
+        console.log('[displayResults] 准备保存历史, imageUrls:', images, '| previewUrl:', data.previewUrl, '| multiUrl:', data.multiUrl);
+        saveToHistory({
+            taskId: data.jobId || data.taskId || taskId,
+            prompt: promptInput ? promptInput.value.trim() : (tasksMap.get(taskId)?.prompt || ''),
+            title: title,
+            imageUrls: images,
+            docId: downloadUrl || '',
+            status: 'completed',
+            options: {
+                fragrances: collectSelectedOptions('fragranceTags'),
+                moods: collectSelectedOptions('moodTags'),
+                style: collectSelectedOptions('styleSelect', true)
+            }
+        });
+    }
 };
 
 // -----------------------------
@@ -2359,11 +2618,17 @@ const ALLOWED_IMAGE_HOSTS = [
     'googleusercontent.com', 'gstatic.com', 'picassousercontent.com',
     'coze.cn', 'coze.com', 'cdn.jsdelivr.net', 'unpkg.com',
     'vercel.app', 'blob.core.windows.net', 's3.amazonaws.com',
-    'miheai.com', 'aliyuncs.com'
+    'miheai.com', 'oss.miheai.com', 'aliyuncs.com', 'oss-cn-hangzhou.aliyuncs.com',
+    'oss-cn-shenzhen.aliyuncs.com', 'oss-cn-beijing.aliyuncs.com',
+    'oss-cn-shanghai.aliyuncs.com', 'oss-cn-qingdao.aliyuncs.com',
+    'oss-cn-hongkong.aliyuncs.com'
 ];
 
 function sanitizeImageUrl(url) {
     if (!url || typeof url !== 'string') return null;
+    // 先移除反引号等包裹字符（使用更彻底的方式）
+    const raw = url;
+    url = url.replace(/[`'"]/g, '').trim();
     if (!/^https?:\/\//i.test(url)) return null;
     try {
         const parsed = new URL(url);
@@ -2372,9 +2637,8 @@ function sanitizeImageUrl(url) {
             hostname === h || hostname.endsWith('.' + h)
         );
         if (!allowed) return null;
-        const safe = url.replace(/['"`\\]/g, '');
-        if (safe.length > 2048) return null;
-        return safe;
+        if (url.length > 2048) return null;
+        return url;
     } catch (_) {
         return null;
     }
@@ -2386,18 +2650,56 @@ function sanitizeImageUrl(url) {
 function extractImages(data) {
     const found = [];
 
+    // 预处理：移除反引号/引号包裹
+    const cleanStr = (s) => (typeof s === 'string') ? s.replace(/[`'"]/g, '').trim() : s;
+
     const directKeys = ['images', 'imageUrls', 'conceptImages', 'pictures', 'photos'];
     for (const k of directKeys) {
-        if (Array.isArray(data[k])) found.push(...data[k].filter(x => typeof x === 'string'));
+        if (Array.isArray(data[k])) {
+            data[k].forEach(x => {
+                if (typeof x === 'string') {
+                    const cleaned = sanitizeImageUrl(cleanStr(x));
+                    if (cleaned) found.push(cleaned);
+                }
+            });
+        }
+    }
+
+    // 单张图片 URL
+    if (typeof data.image_url === 'string') {
+        const cleaned = sanitizeImageUrl(cleanStr(data.image_url));
+        if (cleaned) found.push(cleaned);
+    }
+    if (typeof data.previewUrl === 'string') {
+        const cleaned = sanitizeImageUrl(cleanStr(data.previewUrl));
+        if (cleaned) found.push(cleaned);
+    }
+    if (typeof data.multiUrl === 'string') {
+        const cleaned = sanitizeImageUrl(cleanStr(data.multiUrl));
+        if (cleaned) found.push(cleaned);
     }
 
     if (typeof data.outData === 'string') {
         try {
             const o = JSON.parse(data.outData);
             for (const k of directKeys) {
-                if (Array.isArray(o[k])) found.push(...o[k].filter(x => typeof x === 'string'));
+                if (Array.isArray(o[k])) {
+                    o[k].forEach(x => {
+                        if (typeof x === 'string') {
+                            const cleaned = sanitizeImageUrl(cleanStr(x));
+                            if (cleaned) found.push(cleaned);
+                        }
+                    });
+                }
             }
-            if (typeof o.image === 'string') found.push(o.image);
+            if (typeof o.image === 'string') {
+                const cleaned = sanitizeImageUrl(cleanStr(o.image));
+                if (cleaned) found.push(cleaned);
+            }
+            if (typeof o.image_url === 'string') {
+                const cleaned = sanitizeImageUrl(cleanStr(o.image_url));
+                if (cleaned) found.push(cleaned);
+            }
         } catch (_) {}
     }
 
@@ -2412,11 +2714,18 @@ function extractImages(data) {
             data.infoJson.extracted_infojson && data.infoJson.extracted_infojson.imageUrls,
         ];
         for (const c of candidates) {
-            if (Array.isArray(c)) found.push(...c.filter(x => typeof x === 'string'));
+            if (Array.isArray(c)) {
+                c.forEach(x => {
+                    if (typeof x === 'string') {
+                        const cleaned = sanitizeImageUrl(cleanStr(x));
+                        if (cleaned) found.push(cleaned);
+                    }
+                });
+            }
         }
     }
 
-    const unique = [...new Set(found.map(sanitizeImageUrl).filter(Boolean))];
+    const unique = [...new Set(found.filter(Boolean))];
     return unique;
 }
 
@@ -2624,6 +2933,32 @@ function getFriendlyErrorMessage(errMsg, errCode) {
     return '生成失败了，请稍后重试 🙏';
 }
 
+// 通用错误弹窗：用于并发已满等需要明确打断的场景
+function showErrorDialog(title = '提示', message = '') {
+    const overlay = document.createElement('div');
+    overlay.id = 'kmErrorDialogOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;background:rgba(28,25,23,0.5);opacity:1;';
+    const box = document.createElement('div');
+    box.style.cssText = 'width:min(420px,90vw);background:#fff;border-radius:12px;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,0.2);font-family:inherit;';
+    const titleEl = document.createElement('div');
+    titleEl.style.cssText = 'font-size:16px;font-weight:600;margin-bottom:12px;color:#3b2f2b;';
+    const msgEl = document.createElement('div');
+    msgEl.style.cssText = 'font-size:14px;line-height:1.6;color:#6b5b53;margin-bottom:20px;white-space:pre-wrap;';
+    const btn = document.createElement('button');
+    btn.textContent = '知道了';
+    btn.style.cssText = 'width:100%;padding:11px 0;border:none;border-radius:8px;background:#8a3b2a;color:#fff;font-size:14px;cursor:pointer;';
+    btn.onclick = () => overlay.remove();
+    titleEl.textContent = title;
+    msgEl.textContent = message;
+    box.appendChild(titleEl);
+    box.appendChild(msgEl);
+    box.appendChild(btn);
+    overlay.appendChild(box);
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+    return overlay;
+}
+
 function showErrorInline(msg, errorDetail) {
     hideAllStates();
     const friendlyMsg = getFriendlyErrorMessage(msg, errorDetail);
@@ -2638,51 +2973,16 @@ function showErrorInline(msg, errorDetail) {
 }
 
 // -----------------------------
-// 25. Toast 提示
+// 25. Toast 提示 —— showToast 共享实现见 /common.js
 // -----------------------------
-function showToast(msg, type = 'success') {
-    const existing = document.getElementById('kmToast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.id = 'kmToast';
-    toast.style.cssText = `
-        position: fixed; top: 24px; right: 24px; z-index: 9999;
-        display: flex; align-items: center; gap: 10px;
-        padding: 14px 20px; border-radius: 8px;
-        font-size: 14px; font-family: inherit;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-        opacity: 0; transform: translateY(-12px);
-        transition: opacity 0.35s ease, transform 0.35s ease;
-        max-width: 400px; word-break: break-word;
-    `;
-    const isSuccess = type === 'success';
-    toast.style.background = isSuccess ? '#eaf5e6' : '#fef3e9';
-    toast.style.color = isSuccess ? '#2d4a1e' : '#8a5d1a';
-    toast.style.border = isSuccess ? '1px solid #b8d4a8' : '1px solid #f0cfb0';
-    toast.innerHTML = `
-        <span style="font-size:20px;flex-shrink:0;">${isSuccess ? '✅' : 'ℹ️'}</span>
-        <span style="flex:1;">${escapeHtml(msg)}</span>
-    `;
-    document.body.appendChild(toast);
-
-    requestAnimationFrame(() => {
-        toast.style.opacity = '1';
-        toast.style.transform = 'translateY(0)';
-    });
-
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(-12px)';
-        setTimeout(() => toast.remove(), 400);
-    }, 3000);
-}
 
 // -----------------------------
 // 26. Modal 大图预览
 // -----------------------------
 function openModalWithUrl(url) {
     modalImage.style.backgroundImage = `url('${encodeURI(url)}')`;
+    imageModal.style.display = 'flex';
+    imageModal.style.opacity = '1';
     imageModal.classList.remove('hidden');
     imageModal.classList.add('flex');
     setTimeout(() => imageModal.classList.remove('opacity-0'), 10);
@@ -2690,7 +2990,8 @@ function openModalWithUrl(url) {
 }
 
 window.closeModal = function () {
-    imageModal.classList.add('opacity-0');
+    imageModal.style.opacity = '0';
+    imageModal.style.display = 'none';
     setTimeout(() => {
         imageModal.classList.add('hidden');
         imageModal.classList.remove('flex');
@@ -2895,6 +3196,12 @@ document.addEventListener('keydown', (e) => {
 // 29. 页面初始化
 // -----------------------------
 document.addEventListener('DOMContentLoaded', () => {
+    // 登录守卫：未登录访问工坊页 → 强制跳转登录页，任何功能均不可用
+    try {
+        const _sess = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+        if (!_sess || !_sess.token) { const _cur = window.location.pathname.split('/').pop() || 'index.html'; window.location.replace('login.html?redirect=' + encodeURIComponent(_cur)); return; }
+    } catch (_) { const _cur = window.location.pathname.split('/').pop() || 'index.html'; window.location.replace('login.html?redirect=' + encodeURIComponent(_cur)); return; }
+
     initUIInteractions();
     if (promptInput) promptInput.focus();
     setTimeout(() => document.body.classList.add('loaded'), 100);

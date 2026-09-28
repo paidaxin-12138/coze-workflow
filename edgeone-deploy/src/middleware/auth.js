@@ -1,5 +1,5 @@
 // 认证中间件 - requireAuth + requireAdmin（EdgeOne 版）
-import { getSession, getUserById, deleteSession } from '../db.js';
+import { getSession, getUserById, deleteSession } from '../../db.js';
 
 export async function requireAuth(req, res, next) {
     const auth = req.headers.authorization;

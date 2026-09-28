@@ -1,6 +1,7 @@
 // 管理员路由
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import db, { getUserById, listUsers, getUserStats, toggleAdmin, toggleDisabled, resetUserPassword, adminDeleteUser } from '../../db.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
@@ -35,7 +36,7 @@ router.post('/users/:id/toggle-disabled', requireAuth, requireAdmin, (req, res) 
 router.post('/users/:id/reset-password', requireAuth, requireAdmin, async (req, res) => {
     const targetId = parseInt(req.params.id);
     if (targetId === req.user.id) return res.status(400).json({ error: '不能重置自己的密码' });
-    const new_password = req.body.new_password || Math.random().toString(36).slice(2, 10);
+    const new_password = req.body.new_password || crypto.randomBytes(12).toString('hex');
     const password_hash = await bcrypt.hash(new_password, 10);
     resetUserPassword(targetId, password_hash);
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(targetId);

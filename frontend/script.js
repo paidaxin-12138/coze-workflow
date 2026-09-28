@@ -113,7 +113,7 @@ function handleError(err) {
     const errCode = classifyError(err);
     if (errCode === ERR_UNAUTHORIZED) {
         showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
-        setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+        handleUnauthorized();
     } else {
         showErrorInline(getFriendlyErrorByCode(errCode), err.message);
     }
@@ -124,8 +124,8 @@ function saveTasksToStorage() {
     try {
         const arr = Array.from(tasksMap.entries()).map(([id, task]) => {
             // 只保存关键字段，不保存函数等不可序列化数据
-            const { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt, refFileId, refImageUrl } = task;
-            return [id, { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt, refFileId, refImageUrl }];
+            const { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt, updatedAt, refFileId, refImageUrl } = task;
+            return [id, { taskId, prompt, spec, previewUrl, previewFileId, multiUrl, step, status, createdAt, error, statusChangedAt, updatedAt, refFileId, refImageUrl }];
         });
         localStorage.setItem(TASKS_MAP_KEY, JSON.stringify(arr));
     } catch (_) {}
@@ -154,14 +154,7 @@ function loadTasksFromStorage() {
     } catch (_) {}
 }
 
-// 获取当前登录 token（未登录返回 null）
-function getAuthToken() {
-    try {
-        const s = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
-        return s && s.token ? s.token : null;
-    } catch (_) { return null; }
-}
-
+// 获取当前登录 token（未登录返回 null）—— 见 /common.js 共享实现
 // 获取当前用户信息
 function getCurrentUser() {
     try {
@@ -170,21 +163,8 @@ function getCurrentUser() {
     } catch (_) { return null; }
 }
 
-// -----------------------------
-// 2. API Base URL 解析
-// -----------------------------
-const API_CONFIG = {
-    getBaseUrl() {
-        if (typeof window !== 'undefined' && window.__API_BASE__) {
-            return window.__API_BASE__;
-        }
-        return '';
-    }
-};
-
-function getAPIUrl() {
-    return API_CONFIG.getBaseUrl();
-}
+// 2. API Base URL 解析 —— getAPIUrl 见 /common.js 共享实现
+// 注：window.__API_BASE__ 由页面注入；此处不再单独保留 API_CONFIG
 
 // -----------------------------
 // 3. 辅助：收集高级选项
@@ -227,12 +207,7 @@ function buildFinalPrompt() {
     return parts.join('\n');
 }
 
-function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, (c) => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[c]));
-}
-
+// escapeHtml 共享实现见 /common.js
 function escapeAttr(s) {
     return String(s).replace(/"/g, '&quot;');
 }
@@ -550,6 +525,27 @@ window.openSpecModal = function(taskId, spec) {
 
 // 终态任务状态列表
 const TERMINAL_STATES = ['completed', 'failed', 'no_response', 'cancelled'];
+
+// 状态进度排序：值越大表示任务推进得越靠后。用于刷新/切页后合并本地与后端状态时，
+// 始终采纳"更前进"的状态，避免本地陈旧状态挡住后端已推进的真实进度。
+function statusRank(s) {
+    switch (s) {
+        case 'queued': return 0;
+        case 'processing': return 1;
+        case 'generating_preview': return 2;
+        case 'spec_confirming':
+        case 'confirmed':
+        case 'spec_ready': return 3;
+        case 'preview_ready': return 4;
+        case 'generating_multi': return 5;
+        case 'multi_ready': return 6;
+        case 'completed':
+        case 'failed':
+        case 'no_response':
+        case 'cancelled': return 100;
+        default: return 1;
+    }
+}
 
 // ===== 取消任务：终止当前任务并标记为已取消 =====
 function cancelTask(taskId) {
@@ -984,7 +980,7 @@ function uploadRefImage(file) {
     return new Promise((resolve, reject) => {
         if (!file.type.startsWith('image/')) { showErrorInline('参考图仅支持图片文件'); reject(new Error('图片格式错误')); return; }
         if (file.size > 5 * 1024 * 1024) { showErrorInline('参考图不能超过 5MB'); reject(new Error('图片过大')); return; }
-        if (!getAuthToken()) { window.location.href = 'login.html?redirect=studio.html'; reject(new Error('未登录')); return; }
+        if (!getAuthToken()) { handleUnauthorized(); reject(new Error('未登录')); return; }
 
         const refUploadProgress = document.getElementById('refUploadProgress');
         if (refUploadingText) refUploadingText.classList.remove('hidden');
@@ -1008,9 +1004,7 @@ function uploadRefImage(file) {
             try {
                 const j = JSON.parse(xhr.responseText || '{}');
                 if (xhr.status === 401) {
-                    try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
-                    alert('登录已过期，请重新登录');
-                    window.location.href = 'login.html?redirect=studio.html';
+                    handleUnauthorized();
                     reject(new Error('未登录'));
                     return;
                 }
@@ -1168,9 +1162,7 @@ function updateSpecRefState(task) {
             try {
                 const j = JSON.parse(xhr.responseText || '{}');
                 if (xhr.status === 401) {
-                    try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
-                    alert('登录已过期，请重新登录');
-                    window.location.href = 'login.html?redirect=studio.html';
+                    handleUnauthorized();
                     return;
                 }
                 if (xhr.status < 200 || xhr.status >= 300) throw new Error(j.error || '上传失败');
@@ -1243,7 +1235,7 @@ if (form) form.addEventListener('submit', async (event) => {
         return;
     }
     if (!getAuthToken()) {
-        window.location.href = 'login.html?redirect=studio.html';
+        handleUnauthorized();
         return;
     }
 
@@ -1275,7 +1267,7 @@ async function stepSpec(taskId, userInput) {
     });
 
     if (res.status === 401) {
-        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+        handleUnauthorized();
         throw new Error('LOGIN_EXPIRED');
     }
     if (!res.ok) {
@@ -1309,7 +1301,7 @@ async function stepPreview(taskId, spec, detail, refFileId, refImageUrl) {
     });
 
     if (res.status === 401) {
-        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+        handleUnauthorized();
         throw new Error('LOGIN_EXPIRED');
     }
     if (!res.ok) {
@@ -1352,7 +1344,7 @@ async function stepMulti(taskId, referenceImageUrl, referencePrompt) {
     });
 
     if (res.status === 401) {
-        try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+        handleUnauthorized();
         throw new Error('LOGIN_EXPIRED');
     }
     if (!res.ok) {
@@ -1468,7 +1460,7 @@ window.confirmSpec = async function (taskId, updatedSpec, detail) {
         // ==== 新增：使用差异化错误处理 ====
         if (classifyError(err) === ERR_UNAUTHORIZED) {
             showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
-            setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+            handleUnauthorized();
         } else {
             showErrorInline(getFriendlyErrorByCode(classifyError(err)), err.message);
         }
@@ -1577,7 +1569,7 @@ window.confirmPreview = async function (taskId) {
         // ==== 新增：使用差异化错误处理 ====
         if (classifyError(err) === ERR_UNAUTHORIZED) {
             showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
-            setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+            handleUnauthorized();
         } else {
             showErrorInline(getFriendlyErrorByCode(classifyError(err)), err.message);
         }
@@ -1611,6 +1603,22 @@ window.confirmMulti = async function (taskId) {
     // 1. 先更新状态
     task.status = 'completed';
     task.statusChangedAt = Date.now();
+
+    // 1.1 同步完成状态到后端，确保任务列表页/并发统计能感知任务已结束
+    (async () => {
+        try {
+            const token = getAuthToken();
+            if (!token) return;
+            await fetch(getAPIUrl() + '/api/workflow/' + taskId, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({ status: 'completed' })
+            });
+        } catch (_) { /* 网络异常不影响本地完成流程 */ }
+    })();
 
     // 2. 立即更新 UI 并持久化
     renderTaskProgress();
@@ -1833,7 +1841,7 @@ window.confirmGenerate = function () {
             });
 
             if (createRes.status === 401) {
-                try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+                handleUnauthorized();
                 throw new Error('LOGIN_EXPIRED');
             }
             if (!createRes.ok) {
@@ -1921,7 +1929,7 @@ window.confirmGenerate = function () {
             // ==== 新增：使用差异化错误处理 ====
             if (classifyError(err) === ERR_UNAUTHORIZED) {
                 showErrorInline(ERROR_CODE_MAP[ERR_UNAUTHORIZED]);
-                setTimeout(() => { window.location.href = 'login.html?redirect=studio.html'; }, 1200);
+                handleUnauthorized();
             } else if (/过多任务|请求过于频繁|429|请等待完成后再试/.test(err.message || '')) {
                 // 并发已满：用弹窗明确提示，而不是在页面内联报错，用户知道需等待
                 showErrorDialog('稍后再试', '当前同时生成的创意已满，请等待其中一个完成后，再开启新的构思 🙏');
@@ -2151,7 +2159,7 @@ function renderTaskProgress() {
 }
 
 // 选中任务卡片
-function selectTask(taskId) {
+async function selectTask(taskId) {
     selectedTaskId = taskId;
     document.querySelectorAll('.task-card').forEach(c => c.classList.remove('active', 'border-forest-600', 'bg-forest-50/30'));
     const active = document.querySelector('.task-card[data-task-id="' + taskId + '"]');
@@ -2161,6 +2169,8 @@ function selectTask(taskId) {
 
     const task = tasksMap.get(taskId);
 
+    // 进行中且正在等待用户确认的任务：点击卡片时二次触发对应的确认弹窗（兜底恢复交互）
+    // （此处仅做延后判定，实际恢复逻辑放在 placeholder 声明与 !task 判断之后）
     const placeholder = document.getElementById('taskPlaceholderState');
     const placeholderText = document.getElementById('taskPlaceholderText');
     const initialState = document.getElementById('initialState');
@@ -2175,6 +2185,17 @@ function selectTask(taskId) {
     if (!task) {
         if (placeholder) {
             placeholderText.textContent = '任务不存在';
+            placeholder.style.display = 'flex';
+        }
+        return;
+    }
+
+    // 进行中且正在等待用户确认的任务：点击卡片时二次触发对应的确认弹窗（兜底恢复交互）
+    if (!TERMINAL_STATES.includes(task.status) && WAITING_STATUSES.includes(task.status)) {
+        const resumed = await resumeTaskInteraction(task);
+        if (!resumed) {
+            // 数据尚未恢复，走默认占位展示
+            placeholderText.textContent = '任务处理中...';
             placeholder.style.display = 'flex';
         }
         return;
@@ -2219,6 +2240,77 @@ function selectTask(taskId) {
         if (placeholder) {
             placeholderText.textContent = '任务处理中...';
             placeholder.style.display = 'flex';
+        }
+    }
+}
+
+// 处于"等待用户确认"状态的任务
+const WAITING_STATUSES = ['spec_confirming', 'confirmed', 'spec_ready', 'preview_ready', 'multi_ready'];
+
+// 刷新/切页返回后：根据任务所处的等待状态，二次触发对应的确认弹窗（兜底恢复进行中的交互）。
+// 返回 true 表示已成功恢复弹窗，false 表示数据缺失未恢复（调用方应走默认的占位展示）。
+async function resumeTaskInteraction(task) {
+    if (!task || !task.taskId) return false;
+    const taskId = task.taskId;
+
+    if (task.status === 'spec_confirming' || task.status === 'confirmed' || task.status === 'spec_ready') {
+        let spec = task.spec;
+        // 本地无 spec（可能刷新时第一步尚未落盘），尝试从后端 result 恢复
+        if (!spec) {
+            try {
+                const r = await fetchTaskResultFromBackend(taskId);
+                spec = r && r.spec ? r.spec : null;
+            } catch (_) { spec = null; }
+        }
+        if (spec) {
+            if (typeof window.openSpecModal === 'function') { window.openSpecModal(taskId, spec); return true; }
+        }
+        return false;
+    }
+
+    if (task.status === 'preview_ready') {
+        let previewUrl = task.previewUrl;
+        if (!previewUrl) {
+            try {
+                const r = await fetchTaskResultFromBackend(taskId);
+                previewUrl = (r && r.preview && r.preview.image_url) || '';
+            } catch (_) { previewUrl = ''; }
+        }
+        if (previewUrl) {
+            if (typeof window.openPreviewModal === 'function') {
+                window.openPreviewModal(taskId, previewUrl, task.previewFileId || '', task.prompt || '', task.spec || null);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    if (task.status === 'multi_ready') {
+        if (task.multiUrl && typeof window.openMultiModal === 'function') {
+            // openMultiModal 内部不维护 _previewTaskId，弹窗按钮（重试/返回/完成）依赖它，恢复时需显式设置
+            window._previewTaskId = taskId;
+            window.openMultiModal(taskId, task.multiUrl);
+            return true;
+        }
+        return false;
+    }
+
+    return false;
+}
+
+// 自动兜底：页面首次加载/切页返回后，恢复"最晚一个"进行中且正在等待确认的任务弹窗
+let _autoResumed = false;
+function autoResumeWaitingModal() {
+    if (_autoResumed) return;
+    const waiting = Array.from(tasksMap.values())
+        .filter(t => !TERMINAL_STATES.includes(t.status) && WAITING_STATUSES.includes(t.status))
+        .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    if (waiting.length > 0) {
+        const resumed = resumeTaskInteraction(waiting[0]);
+        if (resumed && resumed.then) {
+            resumed.then(ok => { if (ok) _autoResumed = true; });
+        } else if (resumed) {
+            _autoResumed = true;
         }
     }
 }
@@ -2271,12 +2363,21 @@ async function syncTasksFromBackend() {
             const serverCreated = convertSqliteTime(serverTask.createdAt);
             const serverUpdated = convertSqliteTime(serverTask.updatedAt);
             const serverStatusChanged = convertSqliteTime(serverTask.statusChangedAt);
+            // 状态合并：本地与后端两者中取"更前进"的状态（而非按时间戳，避免刷新后本地陈旧状态长时间挡住后端真实进度）
+            const statusAdvanced = !localTask || (serverTask.status && statusRank(serverTask.status) > statusRank(localTask.status));
+            const finalStatus = statusAdvanced ? serverTask.status : localTask.status;
+            // 从后端 task.result 中恢复 spec（对象），页面刷新且本地无 spec 时使用
+            let specVal = localTask?.spec || null;
+            if (!specVal && serverTask.result && typeof serverTask.result === 'object' && serverTask.result.spec) {
+                specVal = serverTask.result.spec;
+            }
             const normalizedTask = {
                 ...serverTask,
+                status: finalStatus,
                 // 保留前端独有字段（后端不包含这些字段，同步时不会被覆盖）
                 // 同时从后端 params.user_input 提取 prompt（后端任务创建时存入的原始用户输入）
                 prompt: localTask?.prompt || serverTask.params?.user_input || '',
-                spec: localTask?.spec || serverTask.spec || null,
+                spec: specVal,
                 previewPrompt: localTask?.previewPrompt || '',
                 // 从后端 task.result 中提取图片 URL（页面刷新后 localTask 不存在时使用）
                 previewUrl: localTask?.previewUrl || extractUrlFromResult(serverTask.result, 'preview.image_url') || '',
@@ -2289,8 +2390,13 @@ async function syncTasksFromBackend() {
                 updatedAt: serverUpdated,
                 statusChangedAt: serverStatusChanged,
             };
-            // 如果本地不存在，或者后端状态更新时间比本地新，更新本地
-            if (!localTask || serverUpdated > (localTask.updatedAt || 0)) {
+            // 后端补齐了本地缺失的关键数据（spec / 预览图 / 多角度图）时也触发更新
+            const dataFilled = !localTask ||
+                (specVal && specVal !== localTask.spec) ||
+                (normalizedTask.previewUrl && !localTask.previewUrl) ||
+                (normalizedTask.multiUrl && !localTask.multiUrl);
+            // 本地不存在、后端状态更前进、后端补齐缺失数据、或后端更新时间更新时，合并到本地
+            if (statusAdvanced || dataFilled || (localTask && serverUpdated > (localTask.updatedAt || 0))) {
                 tasksMap.set(serverTask.id, normalizedTask);
                 changed = true;
             }
@@ -2318,17 +2424,24 @@ async function syncTasksFromBackend() {
 // 定时刷新右侧面板 + 超时检查 + 后端同步
 function startTaskProgressPolling() {
     renderTaskProgress();
-    // 动态轮询：有活跃任务时每 1 秒，无活跃任务时每 30 秒
-    let pollingInterval = 1000;
+    // 页面加载后立即同步一次后端数据，并尽快恢复最新待确认弹窗（不依赖首次轮询间隔）
+    (async () => {
+        await syncTasksFromBackend();
+        autoResumeWaitingModal();
+    })();
+    // 动态轮询：有活跃任务时每 5 秒，无活跃任务时每 30 秒
+    let pollingInterval = 5000;
     let timer = setInterval(() => {
         renderTaskProgress();
         syncTasksFromBackend();
+        // 首次同步完成后，恢复进行中且正在等待确认的任务弹窗（兜底状态保持）
+        autoResumeWaitingModal();
         // 检查是否有活跃任务（非终态）
         const hasActiveTasks = Array.from(tasksMap.values()).some(t => !TERMINAL_STATES.includes(t.status));
         // 根据是否存在活跃任务动态调整轮询间隔
-        if (hasActiveTasks && pollingInterval !== 1000) {
+        if (hasActiveTasks && pollingInterval !== 5000) {
             clearInterval(timer);
-            pollingInterval = 1000;
+            pollingInterval = 5000;
             timer = setInterval(() => {
                 renderTaskProgress();
                 syncTasksFromBackend();
@@ -2860,45 +2973,8 @@ function showErrorInline(msg, errorDetail) {
 }
 
 // -----------------------------
-// 25. Toast 提示
+// 25. Toast 提示 —— showToast 共享实现见 /common.js
 // -----------------------------
-function showToast(msg, type = 'success') {
-    const existing = document.getElementById('kmToast');
-    if (existing) existing.remove();
-
-    const toast = document.createElement('div');
-    toast.id = 'kmToast';
-    toast.style.cssText = `
-        position: fixed; top: 24px; right: 24px; z-index: 9999;
-        display: flex; align-items: center; gap: 10px;
-        padding: 14px 20px; border-radius: 8px;
-        font-size: 14px; font-family: inherit;
-        box-shadow: 0 8px 24px rgba(0,0,0,0.12);
-        opacity: 0; transform: translateY(-12px);
-        transition: opacity 0.35s ease, transform 0.35s ease;
-        max-width: 400px; word-break: break-word;
-    `;
-    const isSuccess = type === 'success';
-    toast.style.background = isSuccess ? '#eaf5e6' : '#fef3e9';
-    toast.style.color = isSuccess ? '#2d4a1e' : '#8a5d1a';
-    toast.style.border = isSuccess ? '1px solid #b8d4a8' : '1px solid #f0cfb0';
-    toast.innerHTML = `
-        <span style="font-size:20px;flex-shrink:0;">${isSuccess ? '✅' : 'ℹ️'}</span>
-        <span style="flex:1;">${escapeHtml(msg)}</span>
-    `;
-    document.body.appendChild(toast);
-
-    requestAnimationFrame(() => {
-        toast.style.opacity = '1';
-        toast.style.transform = 'translateY(0)';
-    });
-
-    setTimeout(() => {
-        toast.style.opacity = '0';
-        toast.style.transform = 'translateY(-12px)';
-        setTimeout(() => toast.remove(), 400);
-    }, 3000);
-}
 
 // -----------------------------
 // 26. Modal 大图预览
@@ -3120,6 +3196,12 @@ document.addEventListener('keydown', (e) => {
 // 29. 页面初始化
 // -----------------------------
 document.addEventListener('DOMContentLoaded', () => {
+    // 登录守卫：未登录访问工坊页 → 强制跳转登录页，任何功能均不可用
+    try {
+        const _sess = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+        if (!_sess || !_sess.token) { const _cur = window.location.pathname.split('/').pop() || 'index.html'; window.location.replace('login.html?redirect=' + encodeURIComponent(_cur)); return; }
+    } catch (_) { const _cur = window.location.pathname.split('/').pop() || 'index.html'; window.location.replace('login.html?redirect=' + encodeURIComponent(_cur)); return; }
+
     initUIInteractions();
     if (promptInput) promptInput.focus();
     setTimeout(() => document.body.classList.add('loaded'), 100);

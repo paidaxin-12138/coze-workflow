@@ -24,7 +24,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import { Redis } from '@upstash/redis';
 import { CONFIG } from './src/config.js';
-import { ensureRootAdmin, clearTasks, default as db } from './db.js';
+import { ensureRootAdmin, clearTasks, cleanExpiredSessions, default as db } from './db.js';
 import { requireAuth } from './src/middleware/auth.js';
 import pino from 'pino';
 import pinoHttp from 'pino-http';
@@ -61,7 +61,7 @@ const app = express();
 app.get('/account', (req, res) => res.redirect('/account.html'));
 app.get('/admin', (req, res) => res.redirect('/admin.html'));
 app.get('/history', (req, res) => res.redirect('/history.html'));
-app.get('/tasks', (req, res) => res.redirect('/tasks.html'));
+app.get('/tasks', (req, res) => res.redirect('/studio.html'));
 app.get('/studio', (req, res) => res.redirect('/studio.html'));
 app.get('/about', (req, res) => res.redirect('/about.html'));
 app.get('/login', (req, res) => res.redirect('/login.html'));
@@ -155,16 +155,19 @@ const corsOptions = {
     origin: function (origin, callback) {
         // 1. 允许无 origin 的请求（如 Postman、服务器间调用）
         if (!origin) return callback(null, true);
-        // 2. 开发环境允许 localhost
-        if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        // 归一化：去协议、去尾斜杠、去端口，仅保留 host（主机名），用于精确比对防后缀伪装
+        const norm = (o) => String(o).replace(/^https?:\/\//i, '').replace(/\/.*$/, '').split(':')[0].toLowerCase();
+        const host = norm(origin);
+        // 2. 开发环境允许 localhost（精确命中，杜绝 localhost.evil.com 绕过）
+        if (host === 'localhost' || host === '127.0.0.1') {
             return callback(null, true);
         }
-        // 检查白名单
+        // 检查白名单（精确比较 host，禁止子串/后缀匹配）
         if (CONFIG.ALLOWED_ORIGINS.length === 0) {
             logger.warn({ origin }, 'ALLOWED_ORIGINS 未配置，生产环境拒绝所有跨域请求');
             return callback(new Error('CORS 未配置白名单'), false);
         }
-        const isAllowed = CONFIG.ALLOWED_ORIGINS.some(allowed => origin === allowed || origin.endsWith(allowed));
+        const isAllowed = CONFIG.ALLOWED_ORIGINS.some(allowed => norm(allowed) === host);
         if (isAllowed) {
             callback(null, true);
         } else {
@@ -234,6 +237,8 @@ app.use(helmet({
 // ===== 请求日志中间件 =====
 const httpLogger = pinoHttp({
     logger,
+    // 高危: Authorization 请求头含 Bearer token，绝不能写入日志
+    redact: ['req.headers.authorization'],
     genReqId: (req) => {
         const requestId = req.headers['x-request-id'] || crypto.randomUUID();
         req.headers['x-request-id'] = requestId;
@@ -334,6 +339,16 @@ app.use('/api/', async (req, res, next) => {
     }
 });
 
+// 定时清理过期会话（sessions 表不无限膨胀），每小时执行一次
+setInterval(() => {
+    try {
+        cleanExpiredSessions();
+        if (process.env.NODE_ENV !== 'production') logger.info('已清理过期会话');
+    } catch (e) {
+        logger.warn({ err: e }, '清理过期会话失败');
+    }
+}, 60 * 60 * 1000);
+
 // 定时清理内存存储（仅在 Redis 不可用时需要）
 if (!redisAvailable) {
     setInterval(() => {
@@ -364,7 +379,6 @@ app.get('/index.html', serveHtml('index.html'));
 app.get('/studio.html', serveHtml('studio.html'));
 app.get('/copy.html', serveHtml('copy.html'));
 app.get('/history.html', serveHtml('history.html'));
-app.get('/tasks.html', serveHtml('tasks.html'));
 app.get('/about.html', serveHtml('about.html'));
 app.get('/login.html', serveHtml('login.html'));
 app.get('/account.html', serveHtml('account.html'));

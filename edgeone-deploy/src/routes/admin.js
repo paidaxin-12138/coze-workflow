@@ -5,7 +5,7 @@ import {
     getUserById, listUsers, getUserStats,
     toggleAdmin, toggleDisabled, resetUserPassword,
     adminDeleteUser, deleteUserSessions
-} from '../db.js';
+} from '../../db.js';
 import { requireAuth, requireAdmin } from '../middleware/auth.js';
 
 const router = Router();

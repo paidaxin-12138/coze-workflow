@@ -18,6 +18,27 @@ export async function uploadToCoze(fileData, contentType, filename) {
     return j?.data?.id || j?.file_id || j?.id;
 }
 
+// 将 Coze 文件的 file_id 转换为可公开访问的 URL（与主项目一致）
+export async function getCozeFileUrl(fileId) {
+    const res = await fetch('https://api.coze.cn/v1/files/retrieve', {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${CONFIG.KM_COZE_TOKEN}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ file_id: fileId })
+    });
+    if (!res.ok) {
+        const err = await res.text();
+        throw new Error(`获取 Coze 文件 URL 失败: ${err}`);
+    }
+    const data = await res.json();
+    if (!data.data || !data.data.url) {
+        throw new Error('Coze 文件响应缺少 URL');
+    }
+    return data.data.url;
+}
+
 export async function callCozeStream(workflowId, params, options = {}) {
     const body = { workflow_id: workflowId, parameters: params };
     if (CONFIG.COZE_APP_ID) body.app_id = CONFIG.COZE_APP_ID;

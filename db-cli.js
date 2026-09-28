@@ -84,7 +84,7 @@ const commands = {
     },
 
     clearsessions: () => {
-        const r = db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+        const r = db.prepare("DELETE FROM sessions WHERE datetime(expires_at) < datetime('now')").run();
         console.log(`✓ 已清理 ${r.changes} 个过期会话`);
     },
 

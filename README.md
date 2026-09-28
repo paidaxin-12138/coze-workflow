@@ -61,7 +61,6 @@ coze-workflow-app/
 │   ├── index.html            # 首页
 │   ├── login.html            # 登录页
 │   ├── studio.html           # 设计工坊主界面（核心）
-│   ├── tasks.html            # 任务列表页
 │   ├── page-transition.js   # 页面切换动画
 │   ├── script.js             # 前端业务逻辑
 │   ├── style.css             # 自定义样式

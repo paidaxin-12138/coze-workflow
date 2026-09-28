@@ -16,6 +16,8 @@ import { uploadToCoze, callCozeFallback, getCozeFileUrl } from '../coze/client.j
 import { fileTypeFromBuffer } from 'file-type';
 import sharp from 'sharp';
 import OSS from 'ali-oss';
+import net from 'node:net';
+import { lookup } from 'node:dns/promises';
 const router = Router();
 
 // 非生产环境日志
@@ -71,7 +73,7 @@ router.post('/', requireAuth, (req, res) => {
 
     const task = createTask(req.user.id, {
         name: String(name).trim(),
-        params: { user_input: String(p.user_input).trim(), image_file_id: p.image_file_id || '' }
+        params: { user_input: String(p.user_input).trim(), image_file_id: p.image_file_id || '', image_url: p.image_url || '' }
     });
     res.json({ success: true, task });
 });
@@ -82,7 +84,7 @@ router.put('/:id', requireAuth, (req, res) => {
     const { status, result, conversation } = req.body || {};
     const fields = {};
     if (status !== undefined) {
-        if (!['queued', 'processing', 'waiting_confirm', 'done', 'failed', 'cancelled',
+        if (!['queued', 'processing', 'waiting_confirm', 'done', 'completed', 'failed', 'cancelled',
               'spec_ready', 'spec_confirming', 'generating_preview', 'preview_ready',
               'generating_multi', 'multi_ready', 'no_response'].includes(status))
             return res.status(400).json({ success: false, error: '无效的任务状态' });
@@ -270,6 +272,49 @@ async function deleteOSSFiles(urls) {
 }
 
 /**
+ * SSRF 防护：判定 IP 是否为内网/保留地址（禁止服务器访问）
+ */
+function isBlockedIp(ip) {
+    if (!net.isIP(ip)) return true; // 非法/无法识别
+    if (net.isIP(ip) === 4) {
+        const p = ip.split('.').map(Number);
+        const a = p[0], b = p[1];
+        if (a === 0) return true;                                    // 0.0.0.0/8
+        if (a === 10) return true;                                    // 10.0.0.0/8
+        if (a === 127) return true;                                   // 127.0.0.0/8（本机）
+        if (a === 169 && b === 254) return true;                      // 169.254.0.0/16（含云元数据 169.254.169.254）
+        if (a === 172 && b >= 16 && b <= 31) return true;             // 172.16.0.0/12
+        if (a === 192 && b === 168) return true;                      // 192.168.0.0/16
+        if (a === 100 && b >= 64 && b <= 127) return true;            // 100.64.0.0/10（CGNAT）
+        return false;
+    }
+    const lower = ip.toLowerCase();
+    if (lower === '::1') return true;                                 // IPv6 环回
+    if (lower.startsWith('fe80:')) return true;                       // 链路本地
+    if (lower.startsWith('fc') || lower.startsWith('fd')) return true; // 唯一本地地址 ULA
+    if (lower.startsWith('::ffff:127.') || lower.startsWith('::ffff:10.') || lower.startsWith('::ffff:192.168.')) return true;
+    return false;
+}
+
+/**
+ * SSRF 防护：校验待下载的图片 URL，仅允许公网 http/https，拒绝内网/保留地址
+ */
+async function assertSafeImageUrl(url) {
+    if (!url) throw new Error('图片 URL 为空');
+    let u;
+    try { u = new URL(url); } catch { throw new Error('无效的图片 URL'); }
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('仅支持 http/https 图片 URL');
+    const hostname = u.hostname.replace(/^\[|\]$/g, '');
+    if (hostname === 'localhost') throw new Error('不允许访问本机地址');
+    // 解析全部 A/AAAA 记录，任何一个命中内网地址即拒绝（缓解 DNS rebinding）
+    const addrs = await lookup(hostname, { all: true }).catch(() => []);
+    if (addrs.length === 0) throw new Error('无法解析图片域名');
+    for (const { address } of addrs) {
+        if (isBlockedIp(address)) throw new Error('不允许访问内网/保留地址');
+    }
+}
+
+/**
  * 从 URL 下载图片并上传到 OSS
  * @param {string} sourceUrl - Coze 返回的图片 URL
  * @param {string} prefix - 存储前缀（如 'copy'）
@@ -284,6 +329,13 @@ async function saveImageToOSS(sourceUrl, prefix = 'images') {
         return sourceUrl;
     }
     const cleanUrl = String(sourceUrl).replace(/^`|`$/g, '');
+    // SSRF 防护：下载前校验 URL，拒绝内网/保留地址，失败则降级返回原 URL（不触发服务器请求）
+    try {
+        await assertSafeImageUrl(cleanUrl);
+    } catch (e) {
+        console.warn(`[OSS] 拒绝下载不安全的图片 URL: ${cleanUrl} (${e.message})`);
+        return sourceUrl;
+    }
     // 下载图片
     const resp = await fetch(cleanUrl);
     if (!resp.ok) {
@@ -878,19 +930,26 @@ router.post('/image', requireAuth, (req, res, next) => {
             data: req.file.buffer
         };
 
-        // 2️⃣ file-type 文件头二次校验（严格白名单，移除 GIF）
-        const type = await fileTypeFromBuffer(file.data);
-        const allowedMimes = ['image/jpeg', 'image/png', 'image/webp'];
-        if (!type || !allowedMimes.includes(type.mime)) {
-            return res.status(415).json({
-                success: false,
-                error: '仅支持 JPEG、PNG、WEBP 格式的图片'
-            });
+        // 2️⃣ 按文件后缀识别格式（简化：直接识别扩展名）
+        const extToMime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png' };
+        const fileExt = (file.filename.split('.').pop() || '').toLowerCase();
+        const mime = extToMime['.' + fileExt];
+        if (!mime) {
+            return res.status(415).json({ success: false, error: '仅支持 JPG、PNG 格式的图片' });
         }
 
-        // 3️⃣ 文件头二次校验后，使用 sharp 检查图片尺寸
-        const metadata = await sharp(file.data).metadata();
-        if (metadata.width > 4096 || metadata.height > 4096) {
+        // 3️⃣ 统一重编码为标准 RGB PNG（去透明通道、归一 EXIF 方向）
+        //   既规避 Coze “图片格式不支持”，也在此一步解析真实内容——损坏/非图片直接友好报错
+        let normBuf;
+        try {
+            normBuf = await sharp(file.data).rotate().flatten({ background: '#FFFFFF' }).toFormat('png').toBuffer();
+        } catch (_) {
+            return res.status(415).json({ success: false, error: '图片内容无法解析或已损坏，请上传有效的 JPG/PNG 图片' });
+        }
+
+        // 检查重编码后尺寸（≤4096），复用 normBuf 避免对原始 buffer 二次完整解码
+        const meta = await sharp(normBuf).metadata();
+        if (meta.width > 4096 || meta.height > 4096) {
             return res.status(413).json({ success: false, error: '图片尺寸不能超过 4096×4096 像素' });
         }
 
@@ -899,17 +958,9 @@ router.post('/image', requireAuth, (req, res, next) => {
         if (uploadCount >= 20) {
             return res.status(429).json({ success: false, error: '今日上传次数已达上限（20次），请明天再试' });
         }
-        incrementUploadCount(req.user.id);
 
-        // 5️⃣ 二次校验：检测文件头魔数是否匹配扩展名（防止伪装）
-        const extMap = { 'image/jpeg': ['jpg', 'jpeg'], 'image/png': ['png'], 'image/webp': ['webp'] };
-        const fileExt = file.filename.split('.').pop().toLowerCase();
-        if (!extMap[type.mime]?.includes(fileExt)) {
-            return res.status(415).json({ success: false, error: '文件扩展名与真实内容不匹配' });
-        }
-
-        const fileId = await uploadToCoze(file.data, type.mime, file.filename);
-        devLog(`[upload] ${file.filename} (${file.data.length}B) → ${fileId} (detected: ${type.mime})`);
+        const fileId = await uploadToCoze(normBuf, 'image/png', (file.filename.replace(/\.[^.]+$/, '') || 'img') + '.png');
+        devLog(`[upload] ${file.filename} (${normBuf.length}B) → ${fileId} (detected: ${mime})`);
 
         // 保存图片到本地
         // 上传到阿里云 OSS
@@ -920,14 +971,14 @@ router.post('/image', requireAuth, (req, res, next) => {
             bucket: process.env.OSS_BUCKET,
         });
 
-            const saveExt = path.extname(file.filename) || '.png';
-            const savedFilename = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + saveExt;
-            const ossKey = `uploads/${savedFilename}`;
+        const savedFilename = Date.now() + '_' + Math.random().toString(36).slice(2, 8) + '.png';
+        const ossKey = `uploads/${savedFilename}`;
 
         try {
-            const result = await client.put(ossKey, file.data);
+            const result = await client.put(ossKey, normBuf);
             const imageUrl = result.url;  // OSS 返回的完整 URL
             console.log(`[upload] 图片已上传到 OSS: ${imageUrl}`);
+            incrementUploadCount(req.user.id);
             res.json({ success: true, file_id: fileId, image_url: imageUrl });
         } catch (ossErr) {
             console.error('[upload] OSS 上传失败:', ossErr.message);
@@ -935,9 +986,11 @@ router.post('/image', requireAuth, (req, res, next) => {
             const uploadDir = path.join(__dirname, '../../public/uploads');
             if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
             const savePath = path.join(uploadDir, savedFilename);
-            fs.writeFileSync(savePath, file.data);
-            const baseUrl = process.env.BASE_URL || `http://localhost:${process.env.PORT || 3000}`;
-            const imageUrl = `${baseUrl}/uploads/${savedFilename}`;
+            fs.writeFileSync(savePath, normBuf);
+            // 降级 URL 优先用 BASE_URL，否则用请求实际 host（自动匹配访问者端口，避免硬编码端口不一致）
+            const hostBase = process.env.BASE_URL || `${req.protocol}://${req.get('host')}`;
+            const imageUrl = `${hostBase}/uploads/${savedFilename}`;
+            incrementUploadCount(req.user.id);
             res.json({ success: true, file_id: fileId, image_url: imageUrl });
         }
 
@@ -952,51 +1005,61 @@ router.post('/image', requireAuth, (req, res, next) => {
 /**
  * 仿香生成
  * POST /api/workflow/copy
- * 输入：{ brand, name, ml }
- * 输出：{ success: true, image_url: "..." }
+ * 输入：{ image_url }  （一张参考图 URL）
+ * 输出：{ success: true, images: [url40, url60, url80] }  （三张参考图）
  */
 router.post('/copy', requireAuth, async (req, res) => {
     try {
-        const { brand, name, ml } = req.body || {};
-        if (!brand || !String(brand).trim()) return res.status(400).json({ success: false, error: '缺少品牌' });
-        if (!name || !String(name).trim()) return res.status(400).json({ success: false, error: '缺少型号' });
-        if (!ml || !String(ml).trim()) return res.status(400).json({ success: false, error: '缺少毫升数' });
+        const { image_url } = req.body || {};
+        if (!image_url || !String(image_url).trim()) return res.status(400).json({ success: false, error: '缺少参考图 URL' });
 
-        // 调用 Coze 仿香工作流
+        // 清理 URL 中的反引号
+        const cleanUrl = String(image_url).replace(/^`|`$/g, '');
+        // Coze 图像模型要求可公开访问的图片源，OSS 域名支持 https；http 源常被判“参数无效”，故强转协议仅用于传给 Coze
+        const cozeImg = cleanUrl.replace(/^http:\/\//i, 'https://');
+        devLog(`[copy] 提交参考图 img = ${cozeImg}`);
+
+        // 调用 Coze 仿香工作流（输入参数名 img，值为参考图 URL）
         const parameters = {
-            input: String(brand).trim(),
-            name: String(name).trim(),
-            ml: String(ml).trim()
+            img: cozeImg
         };
         const data = await callCozeWorkflow(CONFIG.COPY_WORKFLOW_ID, parameters);
         devLog(`[copy] 工作流ID: ${CONFIG.COPY_WORKFLOW_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.COPY_WORKFLOW_ID}`);
         devLog('[copy] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
 
-        // 提取图片 URL
-        let imageUrl = '';
-        if (data && data.image_url) {
-            imageUrl = String(data.image_url).replace(/^`|`$/g, '');
+        // 提取三张参考图 URL：优先取 image40 / image60 / image80 字段
+        let rawImages = [];
+        if (data && typeof data === 'object') {
+            for (const key of ['image40', 'image60', 'image80']) {
+                const v = data[key];
+                if (v && String(v).trim()) rawImages.push(String(v).replace(/^`|`$/g, ''));
+            }
         }
-        if (!imageUrl && data && data.output) {
-            const urls = extractImageUrls(data.output);
-            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        // 兜底：从 output 字符串中提取图片 URL
+        if (rawImages.length === 0) {
+            const source = (data && typeof data === 'object' && (data.output || data.image_url)) || (typeof data === 'string' ? data : '');
+            const urls = extractImageUrls(String(source));
+            rawImages = urls.map(u => u.replace(/^`|`$/g, ''));
         }
-        if (!imageUrl && typeof data === 'string') {
-            const urls = extractImageUrls(data);
-            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        // 兜底：单图字段 image_url / output 提取单个 URL
+        if (rawImages.length === 0 && data && data.image_url) {
+            rawImages = [String(data.image_url).replace(/^`|`$/g, '')];
         }
 
-        // 保存仿香图片到 OSS
-        if (imageUrl) {
-            imageUrl = await saveImageToOSS(imageUrl, 'copy');
+        // 去重并保存到 OSS
+        const images = [];
+        for (const u of rawImages) {
+            if (!u) continue;
+            const saved = await saveImageToOSS(u, 'copy');
+            if (saved && !images.includes(saved)) images.push(saved);
         }
 
-        if (!imageUrl) {
+        if (images.length === 0) {
             if (process.env.NODE_ENV !== 'production') console.error('[copy] 未找到图片 URL，data 结构:', JSON.stringify(data, null, 2)?.slice(0, 1000));
-            return res.json({ success: false, image_url: null, error: '仿香工作流未返回图片，请检查工作流配置或稍后重试' });
+            return res.json({ success: false, images: [], error: '仿香工作流未返回图片，请检查工作流配置或稍后重试' });
         }
 
-        res.json({ success: true, image_url: imageUrl });
+        res.json({ success: true, images });
     } catch (e) {
         if (process.env.NODE_ENV !== 'production') console.error('[copy]', e);
         res.status(500).json({ success: false, error: e.message });

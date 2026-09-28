@@ -143,7 +143,9 @@ export function deleteSession(token) {
 }
 
 export function cleanExpiredSessions() {
-    db.prepare("DELETE FROM sessions WHERE expires_at < datetime('now')").run();
+    // expires_at 存的是 JS ISO 字符串(YYYY-MM-DDTHH:MM:SS.mmmZ)，datetime('now') 是 "YYYY-MM-DD HH:MM:SS"(空格开头)。
+    // 直接字符串比较会因 ASCII 'T' > ' ' 而恒为 false，必须用 datetime() 归一化后再比较。
+    db.prepare("DELETE FROM sessions WHERE datetime(expires_at) < datetime('now')").run();
 }
 
 // ===== 历史记录 CRUD =====

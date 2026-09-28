@@ -1,6 +1,6 @@
 // 历史记录路由（EdgeOne 版）
 import { Router } from 'express';
-import { addHistory, getHistoryList, getHistoryById, deleteHistory, clearHistory } from '../db.js';
+import { addHistory, getHistoryList, getHistoryById, deleteHistory, clearHistory } from '../../db.js';
 import { requireAuth } from '../middleware/auth.js';
 
 const router = Router();

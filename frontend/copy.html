@@ -133,7 +133,7 @@
                         <span class="material-symbols-outlined text-[20px]">content_copy</span>
                         <span class="text-sm font-medium">仿香</span>
                     </a>
-                    <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                    <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
                         <span class="material-symbols-outlined text-[20px]">task_alt</span>
                         <span class="text-sm font-medium">任务</span>
                     </a>
@@ -181,7 +181,7 @@
                             <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">首页</a>
                             <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">工坊</a>
                             <a href="copy.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700">仿香</a>
-                            <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
+                            <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
                             <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">历史记录</a>
                             <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">关于</a>
                             <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700" id="mobileAccountLink">登录</a>
@@ -197,26 +197,30 @@
                 <div class="text-center mb-8 pt-8">
                     <p class="section-label mb-4">仿香</p>
                     <h2 class="heading-serif text-4xl md:text-5xl mb-4">仿香设计 · <span class="italic">复制经典</span></h2>
-                    <p class="text-ink-muted max-w-xl mx-auto">输入品牌、型号与容量，AI 将分析经典香氛的设计语言，生成仿香概念预览图。</p>
+                    <p class="text-ink-muted max-w-xl mx-auto">上传一张参考图，AI 将分析其设计语言，生成三张仿香参考图。</p>
                 </div>
 
-                <!-- 输入面板（精简版） -->
+                <!-- 输入面板：上传参考图片 -->
                 <div class="bg-sand-100/60 border border-sand-200 p-8 md:p-12 mb-10">
                     <form id="copyForm">
-                        <label class="section-label block mb-6">请输入仿香信息</label>
+                        <label class="section-label block mb-6">请上传参考图片</label>
 
-                        <div class="flex flex-col gap-6">
-                            <div class="relative">
-                                <input class="w-full bg-transparent border-b border-ink/20 px-0 py-3 text-ink text-lg placeholder:text-ink-muted/40 focus:outline-none focus:border-forest-600 transition-colors duration-300"
-                                    id="brandInput" name="brand" placeholder="品牌 · e.g. Chanel" required type="text" />
+                        <div id="copyRefZone" class="border border-dashed border-sand-300 px-4 py-24 text-center cursor-pointer transition-all duration-300 hover:border-forest-500 hover:bg-forest-50/50">
+                            <span class="material-symbols-outlined text-ink-muted/50 block mb-1" style="font-size:36px">add_photo_alternate</span>
+                            <p class="text-xs text-ink-muted">点击或拖拽上传参考图片（PNG / JPG，不超过 5MB）</p>
+                            <input type="file" id="copyRefFile" accept=".jpg,.jpeg,.png" class="hidden" />
+                        </div>
+                        <div id="copyRefUploaded" class="hidden items-center gap-4 bg-forest-100/60 px-4 py-3 mt-3">
+                            <img id="copyRefThumb" src="" alt="参考图缩略" class="w-16 h-16 object-cover border border-sand-200" />
+                            <div class="flex-1 min-w-0">
+                                <p class="text-sm text-ink truncate" id="copyRefFileName"></p>
                             </div>
-                            <div class="relative">
-                                <input class="w-full bg-transparent border-b border-ink/20 px-0 py-3 text-ink text-lg placeholder:text-ink-muted/40 focus:outline-none focus:border-forest-600 transition-colors duration-300"
-                                    id="nameInput" name="name" placeholder="型号 · e.g. No. 5" required type="text" />
-                            </div>
-                            <div class="relative">
-                                <input class="w-full bg-transparent border-b border-ink/20 px-0 py-3 text-ink text-lg placeholder:text-ink-muted/40 focus:outline-none focus:border-forest-600 transition-colors duration-300"
-                                    id="mlInput" name="ml" placeholder="容量 · e.g. 50ml" required type="text" />
+                            <button type="button" id="copyRefRemove" class="text-xs tracking-widest uppercase text-clay-600 hover:text-clay-700 transition-colors">移除</button>
+                        </div>
+                        <div id="copyRefUploading" class="hidden flex-col gap-1 mt-2">
+                            <p class="text-xs text-forest-700">参考图上传中...</p>
+                            <div class="w-full h-1.5 bg-sand-200 rounded-full overflow-hidden">
+                                <div id="copyRefUploadProgress" class="h-full bg-forest-600 rounded-full transition-all duration-300" style="width: 0%;"></div>
                             </div>
                         </div>
 
@@ -266,8 +270,12 @@
                     <div class="hidden w-full transition-opacity duration-700 opacity-0" id="copyResultGrid">
                         <div class="flex items-end justify-between w-full mb-12 border-b border-sand-200 pb-6">
                             <div>
-                                <h3 class="heading-serif text-3xl mb-2" id="copyResultTitle">仿香设计</h3>
-                                <p class="text-xs text-ink-muted font-mono" id="copyResultMeta">品牌: - | 型号: - | 容量: -</p>
+                                <h3 class="heading-serif text-3xl mb-2" id="copyResultTitle">仿香参考图</h3>
+                                <p class="text-xs text-ink-muted font-mono" id="copyResultMeta">基于你上传的参考图 · 生成 3 张</p>
+                                <div class="mt-2 flex items-center gap-2 text-forest-700" id="copyDoneBanner" style="display:none">
+                                    <span class="material-symbols-outlined text-[18px]">check_circle</span>
+                                    <span class="text-sm font-serif">生成完成 · 3 张仿香参考图已就绪</span>
+                                </div>
                             </div>
                             <div class="flex gap-3">
                                 <button type="button" class="btn-ghost" id="downloadCopyBtn" disabled>
@@ -280,14 +288,6 @@
                         <!-- 图片展示 -->
                         <div class="flex gap-4 sm:gap-6 md:gap-8 overflow-x-auto pb-4" id="copyImagesContainer">
                             <!-- 图片由 JS 动态添加 -->
-                        </div>
-
-                        <!-- 微调按钮 -->
-                        <div class="flex justify-center mt-8 mb-16">
-                            <button type="button" id="tweakBtn" class="btn-primary">
-                                <span class="material-symbols-outlined text-[16px]">tune</span>
-                                <span>微调设计</span>
-                            </button>
                         </div>
                     </div>
 
@@ -318,7 +318,7 @@
                             <ul class="space-y-2">
                                 <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">工坊</a></li>
                                 <li><a href="copy.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">仿香</a></li>
-                                <li><a href="tasks.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
+                                <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
                                 <li><a href="history.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">历史记录</a></li>
                                 <li><a href="about.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">关于</a></li>
                             </ul>
@@ -368,7 +368,9 @@
         <button type="button" id="copyImageModalCloseBtn" class="absolute top-8 right-8 w-12 h-12 rounded-full border border-sand-100/30 flex items-center justify-center text-sand-100 hover:bg-sand-100/10 transition-colors">
             <span class="material-symbols-outlined text-[24px]">close</span>
         </button>
-        <div class="w-full max-w-[800px] aspect-[3/4] md:aspect-auto md:h-[819px] bg-cover bg-center border border-sand-100/20" id="copyModalImage"></div>
+        <div class="w-full max-w-[800px] aspect-[3/4] md:aspect-auto md:h-[819px] border border-sand-100/20 bg-sand-100/40 flex items-center justify-center relative" id="copyModalImage">
+                        <img id="copyModalImageEl" src="" alt="仿香参考图大图" referrerpolicy="no-referrer" class="w-full h-full object-contain" style="opacity:0;transition:opacity .3s ease;"/>
+                    </div>
     </div>
 
     <!-- ============ 仿香确认弹窗（生成后询问是否满意） ============ -->
@@ -377,54 +379,16 @@
             <button type="button" class="modal-close" id="copyConfirmCloseBtn">
                 <span class="material-symbols-outlined text-[20px]">close</span>
             </button>
-            <h3 class="heading-serif text-2xl mb-4 text-ink">您对当前仿香设计满意吗？</h3>
+            <h3 class="heading-serif text-2xl mb-4 text-ink">确认生成仿香参考图吗？</h3>
 
             <div id="copyConfirmImageSection" class="mb-5">
-                <img id="copyConfirmImage" src="" alt="仿香预览图" class="w-full border border-sand-200 mb-4" style="cursor:zoom-in;" />
-            </div>
-
-            <!-- 修改意见输入区（初始隐藏，点不满意后展开） -->
-            <div id="copyDetailSection" class="mb-4 hidden">
-                <label class="section-label block mb-1">修改意见</label>
-                <textarea id="copyDetailInput" class="w-full input-field" rows="3" placeholder="例如：瓶身改成磨砂质感、标签颜色加深、背景换成暖色调..."></textarea>
-                <div id="copyTweakLoading" class="hidden mt-2 text-sm text-ink-muted flex items-center gap-2">
-                    <span class="loading-spinner"></span> 微调生成中...
-                </div>
+                <img id="copyConfirmImage" src="" alt="参考图预览" class="w-full border border-sand-200 mb-4" style="cursor:zoom-in;" />
+                <p class="text-xs text-ink-muted text-center">将基于这张参考图生成 3 张仿香参考图</p>
             </div>
 
             <div id="copyNormalButtons" class="flex items-center gap-3">
-                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="copySatisfiedBtn">满意，完成</button>
-                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="copyUnsatisfiedBtn">不满意，微调</button>
-            </div>
-
-            <div id="copyTweakButtons" class="flex items-center gap-3">
-                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="copyTweakSubmitBtn">提交修改</button>
+                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="copySatisfiedBtn">确认生成</button>
                 <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="copyConfirmCancelBtn">取消</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ============ 微调弹窗（独立弹窗） ============ -->
-    <div class="modal-overlay" id="tweakModal">
-        <div class="modal-content" style="position:relative;">
-            <button type="button" class="modal-close" id="tweakModalCloseBtn">
-                <span class="material-symbols-outlined text-[20px]">close</span>
-            </button>
-            <h3 class="heading-serif text-2xl mb-4 text-ink">微调仿香设计</h3>
-
-            <div class="mb-5">
-                <img id="tweakPreviewImage" src="" alt="当前预览图" class="w-full border border-sand-200 mb-4" />
-                <label class="section-label block mb-2">修改意见</label>
-                <textarea id="tweakDetailInput" class="w-full input-field" rows="4" placeholder="例如：瓶身改成磨砂质感、标签颜色加深、背景换成暖色调..."></textarea>
-                <div id="tweakLoading" class="hidden mt-3 text-sm text-ink-muted flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-forest-600 animate-ping"></span>
-                    正在根据意见微调...
-                </div>
-            </div>
-
-            <div class="flex items-center gap-3">
-                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase bg-forest-700 text-sand-50 hover:bg-forest-800 transition-all" id="tweakSubmitBtn">提交修改</button>
-                <button type="button" class="flex-1 px-6 py-3 text-sm tracking-widest uppercase border border-sand-300 text-ink-light hover:bg-sand-100 transition-all" id="tweakModalCancelBtn">取消</button>
             </div>
         </div>
     </div>
@@ -441,30 +405,21 @@
         </div>
     </div>
 
+    <script src="common.js"></script>
     <script>
     (function() {
         'use strict';
 
+        // 登录守卫：未登录访问仿香页 → 强制跳转登录页，任何功能均不可用
+        try {
+            const _sess = JSON.parse(localStorage.getItem('pcs_user_session') || 'null');
+            if (!_sess || !_sess.token) { const _cur = window.location.pathname.split('/').pop() || 'index.html'; window.location.replace('login.html?redirect=' + encodeURIComponent(_cur)); return; }
+        } catch (_) { const _cur = window.location.pathname.split('/').pop() || 'index.html'; window.location.replace('login.html?redirect=' + encodeURIComponent(_cur)); return; }
+
         // ========================================
         // 工具函数
         // ========================================
-        function getAuthToken() {
-            try {
-                const s = JSON.parse(localStorage.getItem('pcs_user_session') || 'null');
-                return (s && s.token) ? s.token : null;
-            } catch (_) { return null; }
-        }
-
-        function getAPIUrl() {
-            return (typeof window !== 'undefined' && window.__API_BASE__) || '';
-        }
-
-        function escapeHtml(s) {
-            if (!s) return '';
-            const d = document.createElement('div');
-            d.textContent = String(s);
-            return d.innerHTML;
-        }
+        // getAuthToken / getAPIUrl / escapeHtml / showToast 共享实现见 /common.js（本页已引入）
 
         function escapeAttr(s) {
             return String(s).replace(/"/g, '&quot;').replace(/'/g, '&#039;');
@@ -488,19 +443,6 @@
             const min = Math.floor(sec / 60);
             const remainSec = sec % 60;
             return min + '分' + remainSec + '秒';
-        }
-
-        function showToast(msg, type) {
-            const existing = document.querySelector('.copy-toast');
-            if (existing) existing.remove();
-            const bg = type === 'error' ? 'bg-clay-600' : type === 'info' ? 'bg-ink' : 'bg-forest-700';
-            const icon = type === 'error' ? 'error' : type === 'info' ? 'info' : 'check_circle';
-            const el = document.createElement('div');
-            el.className = 'copy-toast fixed top-6 right-6 z-[200] flex items-center gap-3 ' + bg + ' text-sand-50 px-5 py-3 shadow-xl text-sm transition-all duration-500';
-            el.innerHTML = '<span class="material-symbols-outlined text-[18px]">' + icon + '</span><span>' + escapeHtml(msg) + '</span>';
-            document.body.appendChild(el);
-            requestAnimationFrame(() => { el.style.opacity = '1'; });
-            setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 500); }, 3000);
         }
 
         function showTaskNotification(msg, iconType) {
@@ -535,20 +477,31 @@
         // 状态
         // ========================================
         let isGenerating = false;
-        let isTweaking = false;
-        let currentImageUrl = null;
-        let currentResultMeta = null; // { brand, name, ml }
+        let currentImages = [];   // 当前的 3 张结果图
+        let currentResultMeta = null; // { prompt: 参考图 URL }
         let history = [];
 
         const STORAGE_KEY = 'copy_history';
+
+// 进行中状态保持：持久化已上传待生成的参考图，刷新/切页后可恢复二次确认弹窗
+const PENDING_KEY = 'copy_pending_ref';
+
+// 参考图状态
+let currentUploaded = null; // { image_url }
 
         // ========================================
         // DOM 引用
         // ========================================
         const form = document.getElementById('copyForm');
-        const brandInput = document.getElementById('brandInput');
-        const nameInput = document.getElementById('nameInput');
-        const mlInput = document.getElementById('mlInput');
+        const refZone = document.getElementById('copyRefZone');
+        const refFileInput = document.getElementById('copyRefFile');
+        const refUploaded = document.getElementById('copyRefUploaded');
+        const refThumb = document.getElementById('copyRefThumb');
+        const refFileName = document.getElementById('copyRefFileName');
+        const refUploading = document.getElementById('copyRefUploading');
+        const refUploadProgress = document.getElementById('copyRefUploadProgress');
+        const refRemove = document.getElementById('copyRefRemove');
+
         const generateBtn = document.getElementById('copyGenerateBtn');
         const btnText = document.getElementById('copyBtnText');
         const btnIcon = document.getElementById('copyBtnIcon');
@@ -566,27 +519,15 @@
         const resultMeta = document.getElementById('copyResultMeta');
         const imagesContainer = document.getElementById('copyImagesContainer');
         const downloadBtn = document.getElementById('downloadCopyBtn');
-        const tweakBtn = document.getElementById('tweakBtn');
 
         const imageModal = document.getElementById('copyImageModal');
         const modalImage = document.getElementById('copyModalImage');
 
         const copyConfirmModal = document.getElementById('copyConfirmModal');
         const copyConfirmImage = document.getElementById('copyConfirmImage');
-        const copyDetailInput = document.getElementById('copyDetailInput');
-        const copyDetailSection = document.getElementById('copyDetailSection');
         const copyNormalButtons = document.getElementById('copyNormalButtons');
-        const copyTweakButtons = document.getElementById('copyTweakButtons');
-        const copyTweakLoading = document.getElementById('copyTweakLoading');
         const copySatisfiedBtn = document.getElementById('copySatisfiedBtn');
-        const copyUnsatisfiedBtn = document.getElementById('copyUnsatisfiedBtn');
-        const copyTweakSubmitBtn = document.getElementById('copyTweakSubmitBtn');
-
-        const tweakModal = document.getElementById('tweakModal');
-        const tweakPreviewImage = document.getElementById('tweakPreviewImage');
-        const tweakDetailInput = document.getElementById('tweakDetailInput');
-        const tweakSubmitBtn = document.getElementById('tweakSubmitBtn');
-        const tweakLoading = document.getElementById('tweakLoading');
+        const copyConfirmCancelBtn = document.getElementById('copyConfirmCancelBtn');
 
         // ========================================
         // UI 切换工具
@@ -635,13 +576,9 @@
             if (oldPending) oldPending.remove();
 
             const meta = {
-                brand: brandInput ? brandInput.value.trim() : '',
-                name: nameInput ? nameInput.value.trim() : '',
-                ml: mlInput ? mlInput.value.trim() : ''
+                prompt: currentUploaded && currentUploaded.image_url ? currentUploaded.image_url : ''
             };
-            const metaStr = meta.brand || meta.name || meta.ml
-                ? escapeHtml(meta.brand + ' ' + meta.name + ' ' + meta.ml)
-                : '仿香任务';
+            const metaStr = meta.prompt ? '参考图 → 仿香生成' : '仿香任务';
 
             const card = document.createElement('div');
             card.className = 'pending-task-card copy-card border border-sand-200 bg-sand-100/60 p-3 flex items-start gap-3';
@@ -684,7 +621,7 @@
 
             // 更新标题
             if (resultMeta && meta) {
-                resultMeta.textContent = '品牌: ' + escapeHtml(meta.brand) + ' | 型号: ' + escapeHtml(meta.name) + ' | 容量: ' + escapeHtml(meta.ml);
+                resultMeta.textContent = '基于你上传的参考图 · 生成 3 张';
             }
 
             // 创建新的图片卡片并追加到水平滚动容器中
@@ -692,23 +629,28 @@
             card.className = 'group relative cursor-pointer result-fade-in flex-shrink-0';
             card.style.width = '280px';
             card.innerHTML = '' +
-                '<div class="aspect-[3/4] overflow-hidden border border-sand-200 relative">' +
+                '<div class="aspect-[3/4] overflow-hidden border border-sand-200 relative bg-sand-100">' +
                     '<div class="absolute inset-0 bg-ink/0 group-hover:bg-ink/10 transition-colors duration-500 z-10 pointer-events-none"></div>' +
-                    '<div class="w-full h-full bg-cover bg-center transition-transform duration-700 group-hover:scale-[1.03]" style="background-image:url(' + JSON.stringify(imageUrl) + ')"></div>' +
+                    '<img alt="' + escapeHtml(labelText || '仿香参考') + '" referrerpolicy="no-referrer" ' +
+                        'class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.03]" ' +
+                        'style="opacity:0;transition:opacity .5s ease, transform .7s ease, scale .7s ease">' +
                     '<div class="absolute bottom-4 left-4 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">' +
                         '<span class="material-symbols-outlined text-forest-700 bg-sand-50/80 rounded-full p-2">zoom_in</span>' +
                     '</div>' +
                 '</div>' +
                 '<div class="mt-4 flex flex-col items-center">' +
-                    '<span class="font-serif text-lg text-ink-muted">' + escapeHtml(labelText || '仿香预览') + '</span>' +
+                    '<span class="font-serif text-lg text-ink-muted">' + escapeHtml(labelText || '仿香参考') + '</span>' +
                     '<span class="w-6 h-px bg-sand-300 mt-2"></span>' +
                 '</div>';
             card.onclick = function() { openCopyImageModal(imageUrl); };
+            var _img = card.querySelector('img');
+            _img.onload = function() { _img.style.opacity = '1'; };
+            _img.onerror = function() { _img.style.opacity = '1'; _img.style.background = '#f2f0ea'; };
+            _img.src = imageUrl;
             imagesContainer.appendChild(card);
 
             // 启用下载和微调按钮
             if (downloadBtn) downloadBtn.disabled = false;
-            if (tweakBtn) tweakBtn.disabled = false;
 
             // 滚动到最新添加的卡片
             setTimeout(function() {
@@ -716,18 +658,29 @@
             }, 100);
         }
 
-        function showCopyResult(imageUrl, meta) {
-            currentImageUrl = imageUrl;
+        function showCopyResult(images, meta) {
+            currentImages = images || [];
             currentResultMeta = meta;
-            addImageToGrid(imageUrl, meta, '仿香预览');
+            if (imagesContainer) imagesContainer.innerHTML = '';
+            (images || []).forEach(function(url, idx) {
+                addImageToGrid(url, meta, '仿香参考 ' + (idx + 1));
+            });
+            const doneBanner = document.getElementById('copyDoneBanner');
+            if (doneBanner) doneBanner.style.display = 'flex';
         }
 
         // ========================================
         // 图片放大
         // ========================================
         function openCopyImageModal(url) {
-            if (!imageModal || !modalImage) return;
-            modalImage.style.backgroundImage = 'url(' + JSON.stringify(url) + ')';
+            if (!imageModal) return;
+            const el = document.getElementById('copyModalImageEl');
+            if (el) {
+                el.style.opacity = '0';
+                el.onload = function() { el.style.opacity = '1'; };
+                el.onerror = function() { el.style.opacity = '1'; el.style.background = '#f2f0ea'; };
+                el.src = url;
+            }
             imageModal.classList.remove('hidden');
             imageModal.classList.add('flex');
             setTimeout(() => { imageModal.style.opacity = '1'; }, 10);
@@ -740,88 +693,108 @@
         };
 
         // ========================================
-        // 核心：生成仿香
+        // 参考图上传
         // ========================================
-        async function generateCopy() {
-            const brand = brandInput.value.trim();
-            const name = nameInput.value.trim();
-            const ml = mlInput.value.trim();
+        function uploadRefImage(file) {
+            let alerted = false;
+            return new Promise((resolve, reject) => {
+                if (!file || !file.type.startsWith('image/')) { alerted = true; showToast('参考图仅支持图片文件', 'error'); reject(new Error('参考图仅支持图片文件')); return; }
+                if (file.size > 5 * 1024 * 1024) { alerted = true; showToast('参考图不能超过 5MB', 'error'); reject(new Error('图片过大')); return; }
+                const ALLOWED = ['image/jpeg', 'image/png'];
+                if (!ALLOWED.includes(file.type)) { alerted = true; showToast('仅支持 JPG、PNG 格式的参考图', 'error'); reject(new Error('仅支持 JPG、PNG 格式的参考图')); return; }
+                const token = getAuthToken();
+                if (!token) { alerted = true; showToast('请先登录', 'error'); handleUnauthorized(); reject(new Error('未登录')); return; }
 
-            if (!brand || !name || !ml) {
-                showToast('请填写品牌、型号和容量', 'error');
-                return;
-            }
+                if (refUploading) refUploading.style.display = 'flex';
+                if (refUploadProgress) refUploadProgress.style.width = '0%';
 
-            // 检查登录状态
-            const token = getAuthToken();
-            if (!token) {
-                showToast('请先登录', 'error');
-                setTimeout(() => { window.location.href = 'login.html?redirect=copy.html'; }, 1000);
-                return;
-            }
-
-            // 新生成 → 清除旧会话的图片
-            if (imagesContainer) imagesContainer.innerHTML = '';
-            setLoading(true);
-            showSection(loadingState);
-            if (loadingText) loadingText.textContent = '正在生成仿香设计...';
-            if (loadingSubtext) loadingSubtext.textContent = 'AI 正在分析经典香氛设计语言';
-            var notifEl = showTaskNotification('正在生成仿香设计...', 'sync');
-            var genStartTime = Date.now();
-
-            try {
-                const res = await fetch(getAPIUrl() + '/api/workflow/copy', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify({ brand, name, ml })
-                });
-                const data = await res.json();
-
-                if (!res.ok || !data.success) {
-                    throw new Error(data.error || '生成失败');
+                const fd = new FormData();
+                fd.append('file', file);
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', getAPIUrl() + '/api/workflow/image');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+                xhr.upload.onprogress = function(e) {
+                    if (e.lengthComputable && refUploadProgress) {
+                        refUploadProgress.style.width = Math.round((e.loaded / e.total) * 100) + '%';
+                    }
+                };
+                xhr.onload = function() {
+                    try {
+                        const j = JSON.parse(xhr.responseText || '{}');
+                        if (xhr.status === 401) {
+                            alerted = true;
+                            handleUnauthorized();
+                            reject(new Error('未登录')); return;
+                        }
+                        if (xhr.status < 200 || xhr.status >= 300) throw new Error(j.error || ('HTTP ' + xhr.status));
+                        if (refUploadProgress) refUploadProgress.style.width = '100%';
+                        const image_url = j.image_url || '';
+                        if (!image_url) throw new Error('上传未返回图片地址');
+                        currentUploaded = { image_url: image_url };
+                        savePendingRef(); // 持久化待生成参考图，刷新后可恢复弹窗
+                        if (refUploaded) { refUploaded.style.display = 'flex'; }
+                        if (refThumb) {
+                            const _objURL = URL.createObjectURL(file);
+                            refThumb.src = _objURL;
+                            // 图片加载完成/失败后立即释放 blob URL，避免累积占用内存
+                            refThumb.onload = function() { URL.revokeObjectURL(_objURL); };
+                            refThumb.onerror = function() { URL.revokeObjectURL(_objURL); };
+                        }
+                        if (refFileName) refFileName.textContent = file.name;
+                        showToast('参考图上传成功', 'info');
+                        resolve(j);
+                        // 上传成功后弹出二次确认生成弹窗
+                        showPreGenerateConfirm(image_url);
+                    } catch (e) {
+                        reject(e);
+                    }
+                };
+                xhr.onerror = function() { reject(new Error('网络错误')); };
+                xhr.ontimeout = function() { reject(new Error('上传超时')); };
+                xhr.timeout = 120000;
+                xhr.send(fd);
+            }).catch(function(e) {
+                currentUploaded = null;
+                if (!alerted) {
+                    const msg = (e && e.message) ? e.message : '';
+                    showToast((msg && msg !== '未登录') ? msg : '参考图上传失败，请稍后重试', 'error');
                 }
+                throw e;
+            }).finally(function() {
+                if (refUploading) refUploading.style.display = 'none';
+            });
+        }
 
-                if (!data.image_url) {
-                    throw new Error('工作流未返回图片');
-                }
-
-                const meta = { brand, name, ml };
-                // 保存到当前状态
-                currentImageUrl = data.image_url;
-                currentResultMeta = meta;
-                // 将图片添加到展示区
-                addImageToGrid(data.image_url, meta, '生成 #' + (imagesContainer.children.length + 1));
-                // 弹出确认弹窗
-                showCopyConfirmModal(data.image_url, meta);
-                addHistory({ type: 'generate', image_url: data.image_url, meta, duration: Date.now() - genStartTime });
-                showToast('仿香生成完成', 'info');
-            } catch (e) {
-                console.error('[copy] 生成失败:', e);
-                showErrorInline(e.message, '请稍后重试');
-                showToast('生成失败: ' + e.message, 'error');
-            } finally {
-                setLoading(false);
-                removePendingTaskCard();
-                removeTaskNotification();
-            }
+        if (refZone && refFileInput) {
+            refZone.addEventListener('click', function() { refFileInput.click(); });
+            refFileInput.addEventListener('change', function() {
+                const f = refFileInput.files && refFileInput.files[0];
+                if (f) { uploadRefImage(f).catch(function(){}); }
+            });
+            refZone.addEventListener('dragover', function(e) { e.preventDefault(); refZone.classList.add('border-forest-600', 'bg-forest-50'); });
+            refZone.addEventListener('dragleave', function() { refZone.classList.remove('border-forest-600', 'bg-forest-50'); });
+            refZone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                refZone.classList.remove('border-forest-600', 'bg-forest-50');
+                const f = e.dataTransfer.files && e.dataTransfer.files[0];
+                if (f) { uploadRefImage(f).catch(function(){}); }
+            });
+            if (refRemove) refRemove.addEventListener('click', function() {
+                currentUploaded = null;
+                clearPendingRef(); // 用户主动移除参考图
+                if (refUploaded) refUploaded.style.display = 'none';
+                if (refFileInput) refFileInput.value = '';
+            });
         }
 
         // ========================================
-        // 仿香确认弹窗（生成后询问是否满意）
+        // 二次确认生成弹窗（上传参考图后展示，确认后调用工作流）
         // ========================================
-        function showCopyConfirmModal(imageUrl, meta) {
+        function showPreGenerateConfirm(referenceImageUrl) {
             if (copyConfirmImage) {
-                copyConfirmImage.src = imageUrl;
-                copyConfirmImage.ondblclick = function() { openCopyImageModal(imageUrl); };
+                copyConfirmImage.src = referenceImageUrl;
+                copyConfirmImage.ondblclick = function() { openCopyImageModal(referenceImageUrl); };
             }
-            if (copyDetailInput) copyDetailInput.value = '';
-            if (copyDetailSection) copyDetailSection.style.display = 'none';
-            if (copyNormalButtons) copyNormalButtons.style.display = 'flex';
-            if (copyTweakButtons) copyTweakButtons.style.display = 'none';
-            if (copyTweakLoading) copyTweakLoading.classList.add('hidden');
             if (copyConfirmModal) {
                 copyConfirmModal.style.display = 'flex';
                 copyConfirmModal.style.opacity = '0';
@@ -836,175 +809,73 @@
             }
         };
 
-        // 满意，完成 → 关闭弹窗，展示结果
+        // 确认生成 → 调用 /copy 工作流
         if (copySatisfiedBtn) {
-            copySatisfiedBtn.addEventListener('click', function() {
-                // 图片已在 generateCopy 中通过 addImageToGrid 添加，无需重复添加
+            copySatisfiedBtn.addEventListener('click', async function() {
                 closeCopyConfirmModal();
-                showToast('仿香设计已完成');
-            });
-        }
-
-        // 不满意，微调 → 展开修改意见输入区
-        if (copyUnsatisfiedBtn) {
-            copyUnsatisfiedBtn.addEventListener('click', function() {
-                if (copyDetailSection) copyDetailSection.style.display = 'block';
-                if (copyNormalButtons) copyNormalButtons.style.display = 'none';
-                if (copyTweakButtons) copyTweakButtons.style.display = 'flex';
-            });
-        }
-
-        // 提交修改意见 → 调用微调 API
-        if (copyTweakSubmitBtn) {
-            copyTweakSubmitBtn.addEventListener('click', async function() {
-                const detail = copyDetailInput.value.trim();
-                if (!detail) {
-                    showToast('请输入修改意见', 'error');
+                if (!currentUploaded || !currentUploaded.image_url) {
+                    showToast('请先上传参考图', 'error');
                     return;
                 }
-
+                const referenceImageUrl = currentUploaded.image_url;
                 const token = getAuthToken();
                 if (!token) {
                     showToast('请先登录', 'error');
+                    handleUnauthorized();
                     return;
                 }
 
-                if (copyTweakLoading) copyTweakLoading.classList.remove('hidden');
-                if (copyTweakSubmitBtn) { copyTweakSubmitBtn.disabled = true; copyTweakSubmitBtn.textContent = '提交中...'; }
-                addPendingTaskCard('正在微调仿香设计...');
-                var notifEl = showTaskNotification('正在微调仿香设计...', 'tune');
-                var tweakStartTime = Date.now();
+                // 新生成 → 清除旧会话的图片
+                if (imagesContainer) imagesContainer.innerHTML = '';
+                setLoading(true);
+                showSection(loadingState);
+                if (loadingText) loadingText.textContent = '正在生成仿香参考图...';
+                if (loadingSubtext) loadingSubtext.textContent = 'AI 正在分析并生成 3 张仿香参考图';
+                showTaskNotification('正在生成仿香参考图...', 'sync');
+                var genStartTime = Date.now();
 
                 try {
-                    const res = await fetch(getAPIUrl() + '/api/workflow/tweak', {
+                    const res = await fetch(getAPIUrl() + '/api/workflow/copy', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'Authorization': 'Bearer ' + token
                         },
-                        body: JSON.stringify({ image_url: currentImageUrl, detail })
+                        body: JSON.stringify({ image_url: referenceImageUrl })
                     });
                     const data = await res.json();
 
                     if (!res.ok || !data.success) {
-                        throw new Error(data.error || '微调失败');
+                        throw new Error(data.error || '生成失败');
+                    }
+                    if (!data.images || data.images.length === 0) {
+                        throw new Error('工作流未返回图片');
                     }
 
-                    if (!data.image_url) {
-                        throw new Error('微调工作流未返回图片');
-                    }
-
-                    // 更新图片
-                    currentImageUrl = data.image_url;
-                    if (copyConfirmImage) copyConfirmImage.src = data.image_url;
-
-                    // 将微调后的图片添加到展示区
-                    addImageToGrid(data.image_url, currentResultMeta, '微调 #' + (imagesContainer.children.length + 1));
-
-                    // 记录历史
-                    addHistory({ type: 'tweak', image_url: data.image_url, meta: currentResultMeta, detail, duration: Date.now() - tweakStartTime });
-
-                    // 重置弹窗状态
-                    if (copyDetailSection) copyDetailSection.style.display = 'none';
-                    if (copyNormalButtons) copyNormalButtons.style.display = 'flex';
-                    if (copyTweakButtons) copyTweakButtons.style.display = 'none';
-                    if (copyDetailInput) copyDetailInput.value = '';
-
-                    showToast('微调成功');
+                    const meta = { prompt: referenceImageUrl, ref_image_url: referenceImageUrl };
+                    currentImages = data.images;
+                    currentResultMeta = meta;
+                    showCopyResult(data.images, meta);
+                    addHistory({ type: 'generate', images: data.images, meta, duration: Date.now() - genStartTime });
+                    clearPendingRef(); // 生成已完成，清除待生成参考图状态
+                    showToast('仿香参考图生成完成', 'info');
                 } catch (e) {
-                    console.error('[copy] 微调失败:', e);
-                    showToast('微调失败: ' + e.message, 'error');
+                    console.error('[copy] 生成失败:', e);
+                    // 识别 Coze 积分/余额/额度不足，给出友好提示
+                    const creditsRe = /积分不足|余额不足|insufficient (credits|balance)|quota exceeded|额度已用尽/i;
+                    if (creditsRe.test(e.message || '')) {
+                        showErrorInline('Coze 积分不足，暂时无法生成', '请充值积分，或等待额度刷新后重试');
+                        showToast('Coze 积分不足，生成未完成', 'error');
+                    } else {
+                        showErrorInline(e.message, '请稍后重试');
+                        showToast('生成失败: ' + e.message, 'error');
+                    }
                 } finally {
-                    if (copyTweakLoading) copyTweakLoading.classList.add('hidden');
-                    if (copyTweakSubmitBtn) { copyTweakSubmitBtn.disabled = false; copyTweakSubmitBtn.textContent = '提交修改'; }
+                    setLoading(false);
                     removePendingTaskCard();
                     removeTaskNotification();
                 }
             });
-        }
-
-        // ========================================
-        // 微调弹窗
-        // ========================================
-        function openTweakModal() {
-            if (!currentImageUrl) {
-                showToast('请先生成仿香设计', 'error');
-                return;
-            }
-            if (tweakPreviewImage) tweakPreviewImage.src = currentImageUrl;
-            if (tweakDetailInput) tweakDetailInput.value = '';
-            if (tweakLoading) tweakLoading.classList.add('hidden');
-            if (tweakSubmitBtn) { tweakSubmitBtn.disabled = false; tweakSubmitBtn.textContent = '提交修改'; }
-            if (tweakModal) {
-                tweakModal.style.display = 'flex';
-                tweakModal.style.opacity = '0';
-                setTimeout(function() { tweakModal.style.opacity = '1'; }, 10);
-            }
-        }
-        window.closeTweakModal = function() {
-            if (tweakModal) {
-                tweakModal.style.opacity = '0';
-                setTimeout(function() { tweakModal.style.display = 'none'; }, 300);
-            }
-        };
-
-        async function submitTweak() {
-            const detail = tweakDetailInput.value.trim();
-            if (!detail) {
-                showToast('请输入修改意见', 'error');
-                return;
-            }
-
-            const token = getAuthToken();
-            if (!token) {
-                showToast('请先登录', 'error');
-                return;
-            }
-
-            isTweaking = true;
-            if (tweakLoading) tweakLoading.classList.remove('hidden');
-            if (tweakSubmitBtn) { tweakSubmitBtn.disabled = true; tweakSubmitBtn.textContent = '提交中...'; }
-            addPendingTaskCard('正在微调仿香设计...');
-            var notifEl = showTaskNotification('正在微调仿香设计...', 'tune');
-            var tweakStartTime = Date.now();
-
-            try {
-                const res = await fetch(getAPIUrl() + '/api/workflow/tweak', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': 'Bearer ' + token
-                    },
-                    body: JSON.stringify({ image_url: currentImageUrl, detail })
-                });
-                const data = await res.json();
-
-                if (!res.ok || !data.success) {
-                    throw new Error(data.error || '微调失败');
-                }
-
-                if (!data.image_url) {
-                    throw new Error('微调工作流未返回图片');
-                }
-
-                // 更新当前图片并添加到展示区
-                currentImageUrl = data.image_url;
-                addImageToGrid(data.image_url, currentResultMeta, '微调 #' + (imagesContainer.children.length + 1));
-
-                // 记录历史
-                addHistory({ type: 'tweak', image_url: data.image_url, meta: currentResultMeta, detail, duration: Date.now() - tweakStartTime });
-                showToast('微调成功');
-                closeTweakModal();
-            } catch (e) {
-                console.error('[tweak] 微调失败:', e);
-                showToast('微调失败: ' + e.message, 'error');
-            } finally {
-                isTweaking = false;
-                if (tweakLoading) tweakLoading.classList.add('hidden');
-                if (tweakSubmitBtn) { tweakSubmitBtn.disabled = false; tweakSubmitBtn.textContent = '提交修改'; }
-                removePendingTaskCard();
-                removeTaskNotification();
-            }
         }
 
         // ========================================
@@ -1013,8 +884,9 @@
         function addHistory(entry) {
             const item = {
                 id: 'copy_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8),
-                type: entry.type, // 'generate' | 'tweak'
-                image_url: entry.image_url,
+                type: entry.type, // 'generate'
+                images: entry.images || [],
+                image_url: (entry.images && entry.images[0]) || entry.image_url || '',
                 meta: entry.meta ? { ...entry.meta } : null,
                 detail: entry.detail || '',
                 created_at: Date.now(),
@@ -1038,6 +910,37 @@
             } catch (_) { history = []; }
         }
 
+        // 进行中状态保持：保存已上传的参考图，供刷新/切页后恢复二次确认弹窗
+        function savePendingRef() {
+            try {
+                if (currentUploaded && currentUploaded.image_url) {
+                    localStorage.setItem(PENDING_KEY, JSON.stringify({ image_url: currentUploaded.image_url, ts: Date.now() }));
+                }
+            } catch (_) {}
+        }
+        function clearPendingRef() {
+            try { localStorage.removeItem(PENDING_KEY); } catch (_) {}
+        }
+        // 页面加载/切页返回：若有未生成的参考图，恢复上传状态并二次触发二次确认弹窗（兜底）
+        function restorePending() {
+            let p = null;
+            try {
+                const raw = localStorage.getItem(PENDING_KEY);
+                if (raw) p = JSON.parse(raw);
+            } catch (_) { p = null; }
+            // 超过 30 分钟视为过期，避免残留过期弹窗
+            if (!p || !p.image_url) return false;
+            if (Date.now() - (p.ts || 0) > 30 * 60 * 1000) { clearPendingRef(); return false; }
+            if (!currentUploaded || !currentUploaded.image_url) {
+                currentUploaded = { image_url: p.image_url };
+            }
+            if (refUploaded) refUploaded.style.display = 'flex';
+            if (refThumb) refThumb.src = p.image_url;
+            if (refFileName) refFileName.textContent = '待生成参考图';
+            showPreGenerateConfirm(p.image_url);
+            return true;
+        }
+
         function renderHistory() {
             const container = document.getElementById('copyHistoryCards');
             const empty = document.getElementById('copyHistoryEmpty');
@@ -1054,14 +957,17 @@
             if (empty) empty.style.display = 'none';
 
             container.innerHTML = history.map(item => {
-                const typeLabel = item.type === 'generate' ? '生成' : '微调';
-                const typeClass = item.type === 'generate' ? 'bg-forest-100 text-forest-800' : 'bg-amber-100 text-amber-800';
-                const metaStr = item.meta ? escapeHtml(item.meta.brand + ' ' + item.meta.name + ' ' + item.meta.ml) : '未知';
-                return '<div class="copy-card border border-sand-200 bg-sand-50/60 rounded-lg p-3" data-image-url="' + escapeAttr(item.image_url) + '" data-item-id="' + escapeAttr(item.id) + '">' +
+                const typeLabel = '生成';
+                const typeClass = 'bg-forest-100 text-forest-800';
+                const mainImg = (item.images && item.images[0]) || item.image_url || '';
+                const countStr = (item.images && item.images.length > 0) ? ' · ' + item.images.length + ' 张' : '';
+                return '<div class="copy-card border border-sand-200 bg-sand-50/60 rounded-lg p-3" data-image-url="' + escapeAttr(mainImg) + '" data-item-id="' + escapeAttr(item.id) + '">' +
                     '<div class="flex items-start justify-between mb-2">' +
                         '<div class="flex items-center gap-2 flex-1 min-w-0">' +
-                            '<div class="w-10 h-10 flex-shrink-0 bg-cover bg-center border border-sand-200 rounded" style="background-image:url(' + JSON.stringify(item.image_url) + ')"></div>' +
-                            '<span class="text-xs text-ink font-medium truncate flex-1" title="' + metaStr + '">' + metaStr + '</span>' +
+                            (mainImg
+                                ? '<div class="w-10 h-10 flex-shrink-0 bg-cover bg-center border border-sand-200 rounded" style="background-image:url(' + JSON.stringify(mainImg) + ')"></div>'
+                                : '<div class="w-10 h-10 flex-shrink-0 bg-sand-200 border border-sand-200 rounded"></div>') +
+                            '<span class="text-xs text-ink font-medium truncate flex-1">仿香参考图' + countStr + '</span>' +
                         '</div>' +
                         '<span class="text-xs px-1.5 py-0.5 rounded flex-shrink-0 ' + typeClass + '">' + typeLabel + '</span>' +
                     '</div>' +
@@ -1085,12 +991,14 @@
         // 下载图片
         // ========================================
         function downloadCurrentImage() {
-            if (!currentImageUrl) {
+            if (!currentImages || currentImages.length === 0) {
                 showToast('没有可下载的图片', 'error');
                 return;
             }
+            // 下载当前选中的图片；若无选中则下载第一张
+            const url = currentImages[0];
             const a = document.createElement('a');
-            a.href = currentImageUrl;
+            a.href = url;
             a.download = 'copy_fragrance_' + Date.now() + '.png';
             a.target = '_blank';
             document.body.appendChild(a);
@@ -1102,10 +1010,12 @@
         // 清空输入
         // ========================================
         function clearInputs() {
-            brandInput.value = '';
-            nameInput.value = '';
-            mlInput.value = '';
-            brandInput.focus();
+            currentUploaded = null;
+            currentImages = [];
+            currentResultMeta = null;
+            if (refUploaded) refUploaded.style.display = 'none';
+            if (refFileInput) refFileInput.value = '';
+            if (imagesContainer) imagesContainer.innerHTML = '';
         }
 
         // ========================================
@@ -1133,31 +1043,22 @@
         // ========================================
         form.addEventListener('submit', function(e) {
             e.preventDefault();
-            generateCopy();
+            if (!currentUploaded || !currentUploaded.image_url) {
+                showToast('请先上传参考图', 'error');
+                return;
+            }
+            // 已上传参考图 → 唤起二次确认生成弹窗
+            showPreGenerateConfirm(currentUploaded.image_url);
         });
 
         if (clearInputBtn) {
             clearInputBtn.addEventListener('click', clearInputs);
         }
 
-        if (tweakBtn) {
-            tweakBtn.addEventListener('click', function() {
-                if (currentImageUrl) {
-                    showCopyConfirmModal(currentImageUrl, currentResultMeta);
-                } else {
-                    showToast('请先生成仿香设计', 'error');
-                }
-            });
-        }
-
-        if (tweakSubmitBtn) {
-            tweakSubmitBtn.addEventListener('click', submitTweak);
-        }
-
         // 遮罩点击关闭弹窗
-        if (tweakModal) {
-            tweakModal.addEventListener('click', function(e) {
-                if (e.target === tweakModal) closeTweakModal();
+        if (copyConfirmModal) {
+            copyConfirmModal.addEventListener('click', function(e) {
+                if (e.target === copyConfirmModal) window.closeCopyConfirmModal();
             });
         }
         if (imageModal) {
@@ -1170,7 +1071,7 @@
         document.addEventListener('keydown', function(e) {
             if (e.key === 'Escape') {
                 window.closeCopyImageModal();
-                closeTweakModal();
+                window.closeCopyConfirmModal();
             }
         });
 
@@ -1216,21 +1117,11 @@
         }
 
         const copyConfirmCloseBtn = document.getElementById('copyConfirmCloseBtn');
-        const copyConfirmCancelBtn = document.getElementById('copyConfirmCancelBtn');
         if (copyConfirmCloseBtn) {
             copyConfirmCloseBtn.addEventListener('click', closeCopyConfirmModal);
         }
         if (copyConfirmCancelBtn) {
-            copyConfirmCancelBtn.addEventListener('click', closeCopyConfirmModal);
-        }
-
-        const tweakModalCloseBtn = document.getElementById('tweakModalCloseBtn');
-        const tweakModalCancelBtn = document.getElementById('tweakModalCancelBtn');
-        if (tweakModalCloseBtn) {
-            tweakModalCloseBtn.addEventListener('click', closeTweakModal);
-        }
-        if (tweakModalCancelBtn) {
-            tweakModalCancelBtn.addEventListener('click', closeTweakModal);
+            copyConfirmCancelBtn.addEventListener('click', function() { clearPendingRef(); closeCopyConfirmModal(); });
         }
 
         // 历史记录项点击事件委托（替代内联 onclick 符合 CSP）
@@ -1245,11 +1136,21 @@
                     if (itemId) deleteCopyHistory(itemId);
                     return;
                 }
-                // 点击卡片打开预览
+                // 点击卡片载入该任务的全部结果到结果区（与工坊逻辑一致）
                 var card = e.target.closest('.copy-card');
                 if (card) {
-                    var url = card.getAttribute('data-image-url');
-                    if (url) openCopyImageModal(url);
+                    var itemId = card.getAttribute('data-item-id');
+                    var item = history.find(function(i) { return i.id === itemId; });
+                    if (item && item.images && item.images.length) {
+                        currentImages = item.images;
+                        currentResultMeta = item.meta || null;
+                        showCopyResult(item.images, item.meta);
+                        var rs = document.getElementById('copyResultSection');
+                        if (rs) rs.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    } else {
+                        var url = card.getAttribute('data-image-url');
+                        if (url) openCopyImageModal(url);
+                    }
                 }
             });
         }
@@ -1358,6 +1259,9 @@
         renderHistory();
         showSection(initialState);
 
+        // 进行中状态保持：刷新/切页返回后恢复未生成的参考图弹窗（兜底）
+        restorePending();
+
         // 从历史记录跳转过来：?copyId=xxx → 加载该记录所有图片
         (function() {
             var params = new URLSearchParams(window.location.search);
@@ -1374,42 +1278,22 @@
                 var allRecords = raw ? JSON.parse(raw) : [];
                 // 找到目标记录
                 var target = allRecords.find(function(r) { return r.id === copyId; });
-                if (!target || !target.meta) return;
+                if (!target || !target.images) return;
 
-                var meta = target.meta;
-                // 找同一品牌/型号/容量的所有记录（按时间排序）
-                var sessionRecords = allRecords.filter(function(r) {
-                    return r.meta && r.meta.brand === meta.brand && r.meta.name === meta.name && r.meta.ml === meta.ml;
-                }).sort(function(a, b) { return a.created_at - b.created_at; });
-
-                if (sessionRecords.length === 0) return;
-
-                // 填充输入框
-                if (brandInput) brandInput.value = meta.brand || '';
-                if (nameInput) nameInput.value = meta.name || '';
-                if (mlInput) mlInput.value = meta.ml || '';
-
-                currentResultMeta = meta;
+                var meta = target.meta || {};
 
                 // 清除已有图片
                 if (imagesContainer) imagesContainer.innerHTML = '';
 
-                // 按时间顺序渲染所有图片
-                sessionRecords.forEach(function(rec, idx) {
-                    if (!rec.image_url) return;
-                    var label = rec.type === 'generate' ? '生成' : ('微调 #' + (idx + 1));
-                    addImageToGrid(rec.image_url, meta, label);
+                // 渲染该记录的 3 张图片
+                target.images.forEach(function(url, idx) {
+                    if (!url) return;
+                    addImageToGrid(url, meta, '仿香参考 ' + (idx + 1));
                 });
 
-                // 更新历史记录列表，只显示当前会话的记录
-                history = sessionRecords;
-                renderHistory();
-
-                // 默认使用最后一张图片作为当前
-                var last = sessionRecords[sessionRecords.length - 1];
-                if (last && last.image_url) {
-                    currentImageUrl = last.image_url;
-                }
+                // 更新当前状态
+                currentResultMeta = meta;
+                currentImages = target.images || [];
 
                 showToast('已加载仿香记录');
             } catch (e) {

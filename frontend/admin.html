@@ -40,7 +40,7 @@
                     <span class="material-symbols-outlined text-[20px]">auto_awesome</span>
                     <span class="text-sm font-medium">工坊</span>
                 </a>
-                <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
                     <span class="material-symbols-outlined text-[20px]">task_alt</span>
                     <span class="text-sm font-medium">任务</span>
                 </a>
@@ -85,7 +85,7 @@
                     <nav class="flex-1 flex flex-col gap-1">
                         <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">首页</a>
                         <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">工坊</a>
-                        <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
+                        <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
                         <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">收藏</a>
                         <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">关于</a>
                         <a href="account.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">我的账户</a>
@@ -213,7 +213,7 @@
                     <ul class="space-y-2">
                         <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">工坊</a></li>
                         <li><a href="index.html#scent-families" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">香调</a></li>
-                        <li><a href="tasks.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
+                        <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
                         <li><a href="history.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">收藏</a></li>
                         <li><a href="about.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">关于</a></li>
                     </ul>
@@ -249,10 +249,17 @@
         </div>
     </div>
 
+    <script src="common.js"></script>
     <script>
     (function() {
         const SESSION_KEY = 'pcs_user_session';
         const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
+
+        // 登录守卫：未登录直接跳转登录页（带回跳）；非管理员由下方 403 弹无权访问
+        try {
+            const _sess = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null');
+            if (!_sess || !_sess.token) { window.location.replace('login.html?redirect=' + encodeURIComponent('admin.html')); return; }
+        } catch (_) { window.location.replace('login.html?redirect=' + encodeURIComponent('admin.html')); return; }
 
         function getToken() {
             try {
@@ -289,8 +296,7 @@
                         return null;
                     }
                     if (r.status === 401) {
-                        accessDenied.classList.remove('hidden');
-                        document.getElementById('accessDeniedMsg').textContent = '登录已过期，请重新登录';
+                        handleUnauthorized();
                         return null;
                     }
                     if (!r.ok) throw new Error('验证失败');

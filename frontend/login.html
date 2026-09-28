@@ -113,8 +113,13 @@
     (function() {
         const STORAGE_KEY = 'pcs_user_session';
         const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
-        // 读取 redirect 参数：从哪个页面跳转过来的，登录后跳回
-        const redirectUrl = new URLSearchParams(window.location.search).get('redirect') || 'index.html';
+        // 读取 redirect 参数：从哪个页面跳转过来的，登录后跳回（做站内安全校验，防开放重定向）
+        const redirectRaw = new URLSearchParams(window.location.search).get('redirect') || '';
+        // 去单前导斜杠：兼容 /studio.html；保留 //xxx 以走失败分支
+        const redirectParam = redirectRaw.replace(/^\/(?!\/)/, '');
+        // 仅页名(可带单层参数)，禁止 : // .. 和目录穿越
+        const isSafe = /^[A-Za-z0-9.-]+\.html(\?[A-Za-z0-9_=&%.-]+)?$/i.test(redirectParam);
+        const redirectUrl = isSafe ? redirectParam : 'studio.html';
         const form = document.getElementById('loginForm');
         const togglePw = document.getElementById('togglePw');
         const passwordInput = document.getElementById('password');
@@ -124,13 +129,26 @@
         let mode = 'login';  // login | register
 
         // 已登录则直接跳转到目标页面（支持 redirect 参数）
-        try {
-            const session = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-            if (session && session.token) {
-                window.location.href = redirectUrl;
-                return;
-            }
-        } catch (_) {}
+        // 先向后端校验 token，避免过期/无效 token 造成的跳转死循环
+        (function verifyStoredSession() {
+            try {
+                const session = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
+                if (!session || !session.token) return;
+                const xhr = new XMLHttpRequest();
+                xhr.open('GET', API_BASE + '/api/me');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + session.token);
+                xhr.timeout = 6000;
+                xhr.onload = function() {
+                    if (xhr.status >= 200 && xhr.status < 300) {
+                        window.location.href = redirectUrl;
+                    } else {
+                        localStorage.removeItem(STORAGE_KEY);
+                    }
+                };
+                xhr.onerror = function() { /* 网络异常时清除会话，避免死循环 */ localStorage.removeItem(STORAGE_KEY); };
+                xhr.send();
+            } catch (_) { localStorage.removeItem(STORAGE_KEY); }
+        })();
 
         // 切换密码可见性
         if (togglePw) {

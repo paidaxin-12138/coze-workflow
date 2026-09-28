@@ -6,10 +6,27 @@ import {
     createTask, getTaskById, listTasks, updateTask, deleteTask, clearTasks, countNonTerminalTasks
 } from '../../db.js';
 import { extractImageUrls } from '../coze/sse.js';
-import { uploadToCoze, callCozeFallback } from '../coze/client.js';
+import { uploadToCoze, callCozeFallback, getCozeFileUrl } from '../coze/client.js';
 import { fileTypeFromBuffer } from 'file-type';
 
 const router = Router();
+
+// ========== 参考图上传每日限流（与主项目一致：每用户每天 20 次）==========
+const uploadCountMap = new Map();
+function checkUploadLimit(userId) {
+    const today = new Date().toDateString();
+    const entry = uploadCountMap.get(`${userId}:${today}`);
+    return entry ? entry.count : 0;
+}
+function incrementUploadCount(userId) {
+    const today = new Date().toDateString();
+    const key = `${userId}:${today}`;
+    const entry = uploadCountMap.get(key) || { count: 0, date: Date.now() };
+    entry.count++;
+    entry.date = Date.now();
+    uploadCountMap.set(key, entry);
+    return entry.count;
+}
 
 // ========== 任务 CRUD ==========
 
@@ -32,7 +49,7 @@ router.post('/', requireAuth, async (req, res) => {
 
     const task = createTask(req.user.id, {
         name: String(name).trim(),
-        params: { user_input: String(p.user_input).trim(), image_file_id: p.image_file_id || '' }
+        params: { user_input: String(p.user_input).trim(), image_file_id: p.image_file_id || '', image_url: p.image_url || '' }
     });
     res.json({ success: true, task });
 });
@@ -43,7 +60,7 @@ router.put('/:id', requireAuth, (req, res) => {
     const { status, result, conversation } = req.body || {};
     const fields = {};
     if (status !== undefined) {
-        if (!['queued', 'processing', 'waiting_confirm', 'done', 'failed', 'cancelled',
+        if (!['queued', 'processing', 'waiting_confirm', 'done', 'completed', 'failed', 'cancelled',
               'spec_ready', 'spec_confirming', 'generating_preview', 'preview_ready',
               'generating_multi', 'multi_ready', 'no_response'].includes(status))
             return res.status(400).json({ success: false, error: '无效的任务状态' });
@@ -56,9 +73,9 @@ router.put('/:id', requireAuth, (req, res) => {
 });
 
 // 清空当前用户的所有任务（必须在 /:id 之前，避免被 /:id 拦截）
-router.delete('/', requireAuth, (req, res) => {
+router.delete('/', requireAuth, async (req, res) => {
     try {
-        const count = clearTasks(req.user.id);
+        const count = await clearTasks(req.user.id);
         res.json({ success: true, deletedCount: count });
     } catch (e) {
         console.error('[DELETE /api/workflow] 清空任务失败:', e);
@@ -67,9 +84,9 @@ router.delete('/', requireAuth, (req, res) => {
 });
 
 // 兼容性路由：/clear 也映射到清空操作
-router.delete('/clear', requireAuth, (req, res) => {
+router.delete('/clear', requireAuth, async (req, res) => {
     try {
-        const count = clearTasks(req.user.id);
+        const count = await clearTasks(req.user.id);
         res.json({ success: true, deletedCount: count });
     } catch (e) {
         console.error('[DELETE /api/workflow/clear] 清空任务失败:', e);
@@ -77,10 +94,17 @@ router.delete('/clear', requireAuth, (req, res) => {
     }
 });
 
-router.delete('/:id', requireAuth, (req, res) => {
-    if (!deleteTask(req.user.id, req.params.id))
-        return res.status(404).json({ success: false, error: '任务不存在' });
-    res.json({ success: true });
+router.delete('/:id', requireAuth, async (req, res) => {
+    try {
+        // 副本 deleteTask 为异步 Supabase 实现，需 await（旧代码未 await 导致 Promise 恒真，永不返回 404）
+        const deleted = await deleteTask(req.user.id, req.params.id);
+        if (!deleted)
+            return res.status(404).json({ success: false, error: '任务不存在' });
+        res.json({ success: true, message: '任务已删除' });
+    } catch (e) {
+        console.error('[DELETE /api/workflow/:id] 删除任务失败:', e);
+        res.status(500).json({ success: false, error: '删除任务失败' });
+    }
 });
 
 // ========== 三步工作流 ==========
@@ -210,7 +234,7 @@ router.post('/step/spec', requireAuth, async (req, res) => {
  */
 router.post('/step/preview', requireAuth, async (req, res) => {
     try {
-        const { task_id, spec, detail, ref_file_id } = req.body || {};
+        const { task_id, spec, detail, ref_file_id, image_url } = req.body || {};
         if (!task_id) return res.status(400).json({ success: false, error: '缺少 task_id' });
         if (!spec) return res.status(400).json({ success: false, error: '缺少设计规范数据' });
 
@@ -226,18 +250,29 @@ router.post('/step/preview', requireAuth, async (req, res) => {
         // 更新任务状态
         updateTask(task.id, { status: 'processing', error: null });
 
-        // 优先使用前端传入的 ref_file_id，其次使用 DB 中存储的 image_file_id
-        let refFileId = ref_file_id || '';
-        if (!refFileId) {
+        // 优先使用前端传入的 image_url（直接可用），其次从 DB 任务参数取 image_url，最后降级用 file_id 转换
+        let refImageUrl = image_url || '';
+        if (!refImageUrl) {
             const taskParams = (task.params && typeof task.params === 'object') ? task.params : {};
-            refFileId = taskParams.image_file_id || '';
+            refImageUrl = taskParams.image_url || '';
+        }
+        if (!refImageUrl) {
+            let refFileId = ref_file_id || '';
+            if (!refFileId) {
+                const taskParams = (task.params && typeof task.params === 'object') ? task.params : {};
+                refFileId = taskParams.image_file_id || '';
+            }
+            if (refFileId) {
+                refImageUrl = await getCozeFileUrl(refFileId);
+                console.log(`[stepPreview] 将 file_id ${refFileId} 转换为 URL: ${refImageUrl}`);
+            }
         }
 
         // 将 spec 转为字符串传入工作流 — 输入参数: input(string), image(string), detail(string)
         const specStr = typeof spec === 'object' ? JSON.stringify(spec, null, 2) : String(spec);
         const parameters = {
             input: specStr,
-            image: refFileId,
+            image: refImageUrl,
             detail: detail || ''
         };
         const data = await callCozeWorkflow(CONFIG.WF_PREVIEW_ID, parameters);
@@ -551,6 +586,8 @@ router.post('/step/multi', requireAuth, async (req, res) => {
             const urls = extractImageUrls(data);
             if (urls.length > 0) imageUrl = urls[0];
         }
+        // 清理输出 URL 中可能带的反引号（与主项目一致）
+        if (imageUrl) imageUrl = String(imageUrl).replace(/^`|`$/g, '');
 
         // 保存到 task.result（task.result 已是解析后的对象）
         const currentResult = (task.result && typeof task.result === 'object') ? { ...task.result } : {};
@@ -678,9 +715,19 @@ router.post('/image', requireAuth, (req, res, next) => {
             return res.status(415).json({ success: false, error: '文件扩展名与真实内容不匹配' });
         }
 
+        // 检查用户每日上传次数限制（每天最多 20 次）
+        const uploadCount = checkUploadLimit(req.user.id);
+        if (uploadCount >= 20) {
+            return res.status(429).json({ success: false, error: '今日上传次数已达上限（20次），请明天再试' });
+        }
+
         const fileId = await uploadToCoze(file.data, type.mime, file.filename);
         console.log(`[upload] ${file.filename} (${file.data.length}B) → ${fileId} (detected: ${type.mime})`);
-        res.json({ success: true, file_id: fileId });
+        // 将 file_id 转换为可公开访问的 URL，供前端/后续工作流直接使用（与主项目一致）
+        const imageUrl = await getCozeFileUrl(fileId);
+        console.log(`[upload] file_id ${fileId} → ${imageUrl}`);
+        incrementUploadCount(req.user.id);
+        res.json({ success: true, file_id: fileId, image_url: imageUrl });
     } catch (e) {
         console.error('[upload]', e);
         res.status(500).json({ success: false, error: '上传失败：' + e.message });
@@ -692,46 +739,58 @@ router.post('/image', requireAuth, (req, res, next) => {
 /**
  * 仿香生成
  * POST /api/workflow/copy
- * 输入：{ brand, name, ml }
- * 输出：{ success: true, image_url: "..." }
+ * 输入：{ image_url }  （一张参考图 URL）
+ * 输出：{ success: true, images: [url40, url60, url80] }  （三张参考图）
  */
 router.post('/copy', requireAuth, async (req, res) => {
     try {
-        const { brand, name, ml } = req.body || {};
-        if (!brand || !String(brand).trim()) return res.status(400).json({ success: false, error: '缺少品牌' });
-        if (!name || !String(name).trim()) return res.status(400).json({ success: false, error: '缺少型号' });
-        if (!ml || !String(ml).trim()) return res.status(400).json({ success: false, error: '缺少毫升数' });
+        const { image_url } = req.body || {};
+        if (!image_url || !String(image_url).trim()) return res.status(400).json({ success: false, error: '缺少参考图 URL' });
 
-        // 调用 Coze 仿香工作流
+        // 清理 URL 中的反引号，并将 http 强转 https 供 Coze 图片模型使用（与主项目一致）
+        const cleanUrl = String(image_url).replace(/^`|`$/g, '');
+        const cozeImg = cleanUrl.replace(/^http:\/\//i, 'https://');
+        console.log(`[copy] 提交参考图 img = ${cozeImg}`);
+
+        // 调用 Coze 仿香工作流（输入参数名 img，值为参考图 URL）
         const parameters = {
-            input: String(brand).trim(),
-            name: String(name).trim(),
-            ml: String(ml).trim()
+            img: cozeImg
         };
         const data = await callCozeWorkflow(CONFIG.COPY_WORKFLOW_ID, parameters);
         console.log(`[copy] 工作流ID: ${CONFIG.COPY_WORKFLOW_ID} | 链接: https://www.coze.cn/workflow/${CONFIG.COPY_WORKFLOW_ID}`);
         console.log('[copy] 输出:', JSON.stringify(data, null, 2)?.slice(0, 500) || 'undefined');
 
-        // 提取图片 URL
-        let imageUrl = '';
-        if (data && data.image_url) {
-            imageUrl = String(data.image_url).replace(/^`|`$/g, '');
+        // 提取三张参考图 URL：优先取 image40 / image60 / image80 字段
+        let rawImages = [];
+        if (data && typeof data === 'object') {
+            for (const key of ['image40', 'image60', 'image80']) {
+                const v = data[key];
+                if (v && String(v).trim()) rawImages.push(String(v).replace(/^`|`$/g, ''));
+            }
         }
-        if (!imageUrl && data && data.output) {
-            const urls = extractImageUrls(data.output);
-            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        // 兜底：从 output 字符串中提取图片 URL
+        if (rawImages.length === 0) {
+            const source = (data && typeof data === 'object' && (data.output || data.image_url)) || (typeof data === 'string' ? data : '');
+            const urls = extractImageUrls(String(source));
+            rawImages = urls.map(u => u.replace(/^`|`$/g, ''));
         }
-        if (!imageUrl && typeof data === 'string') {
-            const urls = extractImageUrls(data);
-            if (urls.length > 0) imageUrl = urls[0].replace(/^`|`$/g, '');
+        // 兜底：单图字段 image_url / output 提取单个 URL
+        if (rawImages.length === 0 && data && data.image_url) {
+            rawImages = [String(data.image_url).replace(/^`|`$/g, '')];
         }
 
-        if (!imageUrl) {
+        // 去重返回（副本无 OSS，直接返回 Coze 原始 URL，不转存）
+        const images = [];
+        for (const u of rawImages) {
+            if (u && !images.includes(u)) images.push(u);
+        }
+
+        if (images.length === 0) {
             console.error('[copy] 未找到图片 URL，data 结构:', JSON.stringify(data, null, 2)?.slice(0, 1000));
-            return res.json({ success: false, image_url: null, error: '仿香工作流未返回图片，请检查工作流配置或稍后重试' });
+            return res.json({ success: false, images: [], error: '仿香工作流未返回图片，请检查工作流配置或稍后重试' });
         }
 
-        res.json({ success: true, image_url: imageUrl });
+        res.json({ success: true, images });
     } catch (e) {
         console.error('[copy]', e);
         res.status(500).json({ success: false, error: e.message });

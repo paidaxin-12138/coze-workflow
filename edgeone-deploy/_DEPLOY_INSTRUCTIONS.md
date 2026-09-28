@@ -142,7 +142,6 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
 
 - `check-status` / `start-workflow`：旧版非流式工作流，已简化。
 - `generate-document` / `download`：文档生成功能依赖于 Google Apps Script 和 Vercel Blob，在 EdgeOne 环境中功能受限。
-- 建议使用新版流式工作流 API（`/api/workflow/start` 和 `/api/workflow/resume`）。
 
 ### 附：导出原有 SQLite 数据
 

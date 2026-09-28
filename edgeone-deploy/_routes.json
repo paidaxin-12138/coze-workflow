@@ -3,7 +3,8 @@
   "exclude": [
     "dev-server.js",
     "db-cli.js",
-    ".env.example"
+    ".env.example",
+    ".env.local"
   ],
   "include": [
     "/api/*"
