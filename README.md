@@ -93,9 +93,9 @@ npm install
 # Coze API（必需）
 COZE_TOKEN=pat_your_coze_token_here
 COZE_APP_ID=your_coze_app_id
-KM_WORKFLOW_ID=7679265032790327336  # 第一步：规范梳理
-KM_PREVIEW_WORKFLOW_ID=7679271460304764991  # 第二步：预览生成
-KM_MULTI_WORKFLOW_ID=7679274717424959522  # 第三步：多角度生成
+KM_WORKFLOW_ID=767926503xxxxxxxxx  # 第一步：规范梳理
+KM_PREVIEW_WORKFLOW_ID=76792714603xxxxxxxxx  # 第二步：预览生成
+KM_MULTI_WORKFLOW_ID=76792747174xxxxxxxxx  # 第三步：多角度生成
 
 # 服务器（可选）
 PORT=3000
