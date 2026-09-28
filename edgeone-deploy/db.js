@@ -124,6 +124,7 @@ function parseTaskRow(row) {
         conversation: safeParse(row.conversation, {}),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+        statusChangedAt: row.updated_at,   // 终态时刻近似（完成后冻结），供前端计算已消耗时长
         error: row.error
     };
 }

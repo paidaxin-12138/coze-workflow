@@ -80,3 +80,42 @@ function handleUnauthorized() {
     // replace：登录页替换过期页，回退键不会复活 401 页
     window.location.replace('login.html?redirect=' + redirect);
 }
+
+// ===== 账号隔离的本地历史存储 =====
+// 历史数据按登录账号(user.id)隔离，避免同一浏览器多账号共享同一份历史记录。
+// 读取时若带账号后缀的新 key 为空，自动把旧的全局 key 数据迁移到当前账号 key 下，老数据不丢。
+function getLocalUid() {
+    try {
+        const s = JSON.parse(localStorage.getItem('pcs_user_session') || 'null');
+        return (s && s.user && (s.user.id || s.user.designer_id)) || '';
+    } catch (_) { return ''; }
+}
+
+function scopedKey(baseKey) {
+    const uid = getLocalUid();
+    return baseKey + (uid ? '_' + uid : '');
+}
+
+function loadScopedHistory(baseKey) {
+    try {
+        const k = scopedKey(baseKey);
+        const raw = localStorage.getItem(k);
+        if (raw !== null) return JSON.parse(raw);
+        // 一次性迁移旧全局 key 数据到当前账号
+        const legacy = localStorage.getItem(baseKey);
+        if (legacy !== null) {
+            localStorage.setItem(k, legacy);
+            localStorage.removeItem(baseKey);
+            return JSON.parse(legacy);
+        }
+        return [];
+    } catch (_) { return []; }
+}
+
+function saveScopedHistory(baseKey, items) {
+    try { localStorage.setItem(scopedKey(baseKey), JSON.stringify(items)); } catch (_) {}
+}
+
+function removeScopedHistory(baseKey) {
+    try { localStorage.removeItem(scopedKey(baseKey)); } catch (_) {}
+}

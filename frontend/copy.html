@@ -133,7 +133,7 @@
                         <span class="material-symbols-outlined text-[20px]">content_copy</span>
                         <span class="text-sm font-medium">仿香</span>
                     </a>
-                    <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                    <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
                         <span class="material-symbols-outlined text-[20px]">task_alt</span>
                         <span class="text-sm font-medium">任务</span>
                     </a>
@@ -181,7 +181,7 @@
                             <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">首页</a>
                             <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">工坊</a>
                             <a href="copy.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700">仿香</a>
-                            <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
+                            <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
                             <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">历史记录</a>
                             <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">关于</a>
                             <a href="#" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700" id="mobileAccountLink">登录</a>
@@ -318,7 +318,7 @@
                             <ul class="space-y-2">
                                 <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">工坊</a></li>
                                 <li><a href="copy.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">仿香</a></li>
-                                <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
+                                <li><a href="tasks.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
                                 <li><a href="history.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">历史记录</a></li>
                                 <li><a href="about.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">关于</a></li>
                             </ul>
@@ -481,7 +481,7 @@
         let currentResultMeta = null; // { prompt: 参考图 URL }
         let history = [];
 
-        const STORAGE_KEY = 'copy_history';
+        const STORAGE_KEY = 'copy_history'; // base key，实际存取经 common.js load/saveScopedHistory 按账号隔离
 
 // 进行中状态保持：持久化已上传待生成的参考图，刷新/切页后可恢复二次确认弹窗
 const PENDING_KEY = 'copy_pending_ref';
@@ -899,14 +899,13 @@ let currentUploaded = null; // { image_url }
 
         function saveHistory() {
             try {
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(history));
+                saveScopedHistory(STORAGE_KEY, history);
             } catch (_) {}
         }
 
         function loadHistory() {
             try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                history = raw ? JSON.parse(raw) : [];
+                history = loadScopedHistory(STORAGE_KEY);
             } catch (_) { history = []; }
         }
 
@@ -1162,10 +1161,9 @@ let currentUploaded = null; // { image_url }
             var btn = document.querySelector('.copy-delete-btn[data-item-id="' + id + '"]');
             if (btn) btn.disabled = true;
             try {
-                var raw = localStorage.getItem(STORAGE_KEY);
-                var arr = raw ? JSON.parse(raw) : [];
+                var arr = loadScopedHistory(STORAGE_KEY);
                 var filtered = arr.filter(function(i) { return i.id !== id; });
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+                saveScopedHistory(STORAGE_KEY, filtered);
                 history = filtered;
                 renderHistory();
                 showToast('记录已删除');
@@ -1274,8 +1272,7 @@ let currentUploaded = null; // { image_url }
             }
 
             try {
-                var raw = localStorage.getItem(STORAGE_KEY);
-                var allRecords = raw ? JSON.parse(raw) : [];
+                var allRecords = loadScopedHistory(STORAGE_KEY);
                 // 找到目标记录
                 var target = allRecords.find(function(r) { return r.id === copyId; });
                 if (!target || !target.images) return;

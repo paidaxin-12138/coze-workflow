@@ -44,7 +44,7 @@
                     <span class="material-symbols-outlined text-[20px]">content_copy</span>
                     <span class="text-sm font-medium">仿香</span>
                 </a>
-                <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
+                <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700 transition-colors duration-200">
                     <span class="material-symbols-outlined text-[20px]">task_alt</span>
                     <span class="text-sm font-medium">任务</span>
                 </a>
@@ -90,7 +90,7 @@
                         <a href="index.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">首页</a>
                         <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">工坊</a>
                         <a href="copy.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">仿香</a>
-                        <a href="studio.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
+                        <a href="tasks.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">任务</a>
                         <a href="history.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-forest-100/60 text-forest-700">收藏</a>
                         <a href="about.html" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">关于</a>
                         <a href="#" onclick="try{var s=JSON.parse(localStorage.getItem('pcs_user_session')||'null');window.location.href=(s&&s.token)?'account':'login.html';return false;}catch(e){window.location.href='login.html';return false;}" class="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-sand-100 text-ink-light hover:text-forest-700">我的账户</a>
@@ -169,7 +169,7 @@
                     <ul class="space-y-2">
                         <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">工坊</a></li>
                         <li><a href="index.html#scent-families" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">香调</a></li>
-                        <li><a href="studio.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
+                        <li><a href="tasks.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">任务</a></li>
                         <li><a href="history.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">收藏</a></li>
                         <li><a href="about.html" class="text-sm text-sand-200/80 hover:text-sand-50 transition-colors">关于</a></li>
                     </ul>
@@ -187,9 +187,10 @@
         </div>
     </footer>
 
+    <script src="common.js"></script>
     <script>
     (function() {
-        const STORAGE_KEY = 'perfume_concept_history';
+        const STORAGE_KEY = 'perfume_concept_history'; // base key，实际存取经 common.js load/saveScopedHistory 按账号隔离
         const SESSION_KEY = 'pcs_user_session';
         const API_BASE = (typeof window !== 'undefined' && window.__API_BASE__) || '';
         let allItems = [];
@@ -216,10 +217,9 @@
         }
 
         async function loadHistory() {
-            // 1) 先加载 localStorage 兜底数据
+            // 1) 先加载本地（按账号隔离）兜底数据
             try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                allItems = raw ? JSON.parse(raw) : [];
+                allItems = loadScopedHistory(STORAGE_KEY);
             } catch (_) { allItems = []; }
 
             // 2) 已登录则从后端拉取（覆盖本地）
@@ -243,11 +243,10 @@
             // 3) 标记 studio 类型
             allItems.forEach(function(item) { item.type = 'studio'; });
 
-            // 4) 加载仿香历史（localStorage）
+            // 4) 加载仿香历史（localStorage，按账号隔离）
             try {
-                var copyRaw = localStorage.getItem('copy_history');
-                if (copyRaw) {
-                    var copyItems = JSON.parse(copyRaw);
+                var copyItems = loadScopedHistory('copy_history');
+                if (copyItems.length) {
                     copyItems.forEach(function(item) {
                         // 转换为历史页面统一格式
                         item.type = 'copy';
@@ -267,22 +266,18 @@
         }
 
         async function deleteHistoryItem(id) {
-            // 本地删除（studio 本地兜底）
+            // 本地删除（studio 本地兜底，按账号隔离）
             try {
-                const raw = localStorage.getItem(STORAGE_KEY);
-                const arr = raw ? JSON.parse(raw) : [];
+                const arr = loadScopedHistory(STORAGE_KEY);
                 const filtered = arr.filter(i => i.id !== id);
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
+                saveScopedHistory(STORAGE_KEY, filtered);
             } catch (_) {}
 
             // 删除仿香本地记录
             try {
-                var copyRaw = localStorage.getItem('copy_history');
-                if (copyRaw) {
-                    var copyArr = JSON.parse(copyRaw);
-                    var copyFiltered = copyArr.filter(function(i) { return i.id !== id; });
-                    localStorage.setItem('copy_history', JSON.stringify(copyFiltered));
-                }
+                var copyArr = loadScopedHistory('copy_history');
+                var copyFiltered = copyArr.filter(function(i) { return i.id !== id; });
+                saveScopedHistory('copy_history', copyFiltered);
             } catch (_) {}
 
             // 后端删除（仅 studio 记录）
@@ -305,9 +300,9 @@
 
         async function clearAllHistory() {
             if (!confirm('确认清空所有历史记录？此操作不可撤销。')) return;
-            // 本地清空
-            localStorage.removeItem(STORAGE_KEY);
-            localStorage.removeItem('copy_history');
+            // 本地清空（按账号隔离）
+            removeScopedHistory(STORAGE_KEY);
+            removeScopedHistory('copy_history');
             // 后端清空
             const token = getAuthToken();
             if (token) {

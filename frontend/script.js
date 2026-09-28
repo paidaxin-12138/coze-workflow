@@ -74,7 +74,7 @@ const MISSING_DOM = new Set();
     if (!el) MISSING_DOM.add(i);
 });
 
-const HISTORY_STORAGE_KEY = 'perfume_concept_history';
+const HISTORY_STORAGE_KEY = 'perfume_concept_history'; // base key，实际存取经 common.js load/saveScopedHistory 按账号隔离
 const SESSION_KEY = 'pcs_user_session';
 const TASKS_MAP_KEY = 'pcs_tasks_map';
 
@@ -236,8 +236,7 @@ async function saveToHistory(entry) {
     _savedHistoryKeys.add(key);
 
     try {
-        const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
-        const arr = raw ? JSON.parse(raw) : [];
+        const arr = loadScopedHistory(HISTORY_STORAGE_KEY);
         arr.unshift({
             id: 'pc_' + Date.now(),
             prompt: entry.prompt || '',
@@ -251,7 +250,7 @@ async function saveToHistory(entry) {
             taskId: entry.taskId || null
         });
         const trimmed = arr.slice(0, 50);
-        localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(trimmed));
+        saveScopedHistory(HISTORY_STORAGE_KEY, trimmed);
     } catch (e) {
         console.warn('本地历史保存失败:', e);
     }
